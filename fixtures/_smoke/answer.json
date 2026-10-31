@@ -1,0 +1,134 @@
+{
+	"name": "_smoke",
+	"description": "Capture smoke test: four items fade in and rise 24px, 600ms, delays 100 + i*80 ms, on load. The .hover box has a 200ms ease-out background-color transition, exercised by the capture tests with a hover trigger.",
+	"viewport": {
+		"width": 1280,
+		"height": 800
+	},
+	"trigger": {
+		"type": "load"
+	},
+	"captureMs": 1000,
+	"rows": [
+		{
+			"selector": ".item",
+			"index": 0,
+			"property": "opacity",
+			"from": 0,
+			"to": 1,
+			"startMs": 100,
+			"durationMs": 600,
+			"easing": {
+				"type": "cubic-bezier",
+				"p": [0.16, 1, 0.3, 1]
+			},
+			"iterations": 1,
+			"source": "css-animation"
+		},
+		{
+			"selector": ".item",
+			"index": 0,
+			"property": "translateY",
+			"from": 24,
+			"to": 0,
+			"startMs": 100,
+			"durationMs": 600,
+			"easing": {
+				"type": "cubic-bezier",
+				"p": [0.16, 1, 0.3, 1]
+			},
+			"iterations": 1,
+			"source": "css-animation"
+		},
+		{
+			"selector": ".item",
+			"index": 1,
+			"property": "opacity",
+			"from": 0,
+			"to": 1,
+			"startMs": 180,
+			"durationMs": 600,
+			"easing": {
+				"type": "cubic-bezier",
+				"p": [0.16, 1, 0.3, 1]
+			},
+			"iterations": 1,
+			"source": "css-animation"
+		},
+		{
+			"selector": ".item",
+			"index": 1,
+			"property": "translateY",
+			"from": 24,
+			"to": 0,
+			"startMs": 180,
+			"durationMs": 600,
+			"easing": {
+				"type": "cubic-bezier",
+				"p": [0.16, 1, 0.3, 1]
+			},
+			"iterations": 1,
+			"source": "css-animation"
+		},
+		{
+			"selector": ".item",
+			"index": 2,
+			"property": "opacity",
+			"from": 0,
+			"to": 1,
+			"startMs": 260,
+			"durationMs": 600,
+			"easing": {
+				"type": "cubic-bezier",
+				"p": [0.16, 1, 0.3, 1]
+			},
+			"iterations": 1,
+			"source": "css-animation"
+		},
+		{
+			"selector": ".item",
+			"index": 2,
+			"property": "translateY",
+			"from": 24,
+			"to": 0,
+			"startMs": 260,
+			"durationMs": 600,
+			"easing": {
+				"type": "cubic-bezier",
+				"p": [0.16, 1, 0.3, 1]
+			},
+			"iterations": 1,
+			"source": "css-animation"
+		},
+		{
+			"selector": ".item",
+			"index": 3,
+			"property": "opacity",
+			"from": 0,
+			"to": 1,
+			"startMs": 340,
+			"durationMs": 600,
+			"easing": {
+				"type": "cubic-bezier",
+				"p": [0.16, 1, 0.3, 1]
+			},
+			"iterations": 1,
+			"source": "css-animation"
+		},
+		{
+			"selector": ".item",
+			"index": 3,
+			"property": "translateY",
+			"from": 24,
+			"to": 0,
+			"startMs": 340,
+			"durationMs": 600,
+			"easing": {
+				"type": "cubic-bezier",
+				"p": [0.16, 1, 0.3, 1]
+			},
+			"iterations": 1,
+			"source": "css-animation"
+		}
+	]
+}

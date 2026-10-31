@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>variant fade-ease-in</title>
+<style>
+*{box-sizing:border-box}
+:root{--accent:#2f6fed;--ink:#1d1d1f;--mute:#6e6e73;--line:#d2d2d7;--bg:#f5f5f7}
+body{margin:0;padding:48px;min-height:800px;font:16px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--ink)}
+h1{margin:0 0 24px;font-size:20px;font-weight:600}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:20px}
+.card b{color:var(--accent)}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:20px}
+.card{height:160px;animation:fade-up 700ms ease-in both;animation-delay:calc(200ms + var(--i) * 90ms)}
+@keyframes fade-up{from{opacity:0;transform:translateY(32px)}to{opacity:1;transform:translateY(0)}}
+</style>
+</head>
+<body>
+<h1>Fade up stagger</h1>
+<div class="grid">
+<div class="card" style="--i:0"><b>Card 1</b></div>
+<div class="card" style="--i:1"><b>Card 2</b></div>
+<div class="card" style="--i:2"><b>Card 3</b></div>
+<div class="card" style="--i:3"><b>Card 4</b></div>
+</div>
+</body>
+</html>

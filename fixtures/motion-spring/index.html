@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>motion-spring</title>
+<style>
+*{box-sizing:border-box}
+:root{--accent:#2f6fed;--ink:#1d1d1f;--mute:#6e6e73;--line:#d2d2d7;--bg:#f5f5f7}
+body{margin:0;padding:48px;min-height:800px;font:16px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--ink)}
+h1{margin:0 0 24px;font-size:20px;font-weight:600}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:20px}
+.card b{color:var(--accent)}
+.box{width:96px;height:96px;border-radius:12px;background:var(--accent)}
+.go{margin-top:24px;font:inherit;padding:10px 18px;border:1px solid var(--line);border-radius:8px;background:#fff;cursor:pointer}
+</style>
+<script src="/node_modules/motion/dist/motion.js"></script>
+</head>
+<body>
+<h1>Motion spring</h1>
+<div class="box"></div>
+<button class="go" type="button">Move</button>
+<script>
+document.querySelector(".go").addEventListener("click", () => {
+	Motion.animate(".box", { x: 200 }, { type: "spring", stiffness: 300, damping: 20, mass: 1 });
+});
+</script>
+</body>
+</html>

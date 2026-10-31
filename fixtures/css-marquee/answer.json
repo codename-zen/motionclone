@@ -1,0 +1,28 @@
+{
+	"name": "css-marquee",
+	"description": "Duplicated row, explicit width 2400px, translateX 0 -> -50% (-1200px), linear, 12000ms, infinite.",
+	"viewport": {
+		"width": 1280,
+		"height": 800
+	},
+	"trigger": {
+		"type": "none"
+	},
+	"captureMs": 3000,
+	"rows": [
+		{
+			"selector": ".row",
+			"index": 0,
+			"property": "translateX",
+			"from": 0,
+			"to": -1200,
+			"startMs": 0,
+			"durationMs": 12000,
+			"easing": {
+				"type": "linear"
+			},
+			"iterations": "infinite",
+			"source": "css-animation"
+		}
+	]
+}

@@ -1,0 +1,104 @@
+{
+	"name": "gsap-timeline",
+	"description": "GSAP timeline.from(.item, {y:40, opacity:0, duration:0.8, ease:power3.out, stagger:0.12}) at position 0.1s. power3.out is GSAP's quartic ease-out, recorded as cubic-bezier(0.25,1,0.5,1) (easeOutQuart).",
+	"viewport": {
+		"width": 1280,
+		"height": 800
+	},
+	"trigger": {
+		"type": "load"
+	},
+	"captureMs": 1700,
+	"rows": [
+		{
+			"selector": ".item",
+			"index": 0,
+			"property": "opacity",
+			"from": 0,
+			"to": 1,
+			"startMs": 100,
+			"durationMs": 800,
+			"easing": {
+				"type": "cubic-bezier",
+				"p": [0.25, 1, 0.5, 1]
+			},
+			"iterations": 1,
+			"source": "gsap"
+		},
+		{
+			"selector": ".item",
+			"index": 0,
+			"property": "translateY",
+			"from": 40,
+			"to": 0,
+			"startMs": 100,
+			"durationMs": 800,
+			"easing": {
+				"type": "cubic-bezier",
+				"p": [0.25, 1, 0.5, 1]
+			},
+			"iterations": 1,
+			"source": "gsap"
+		},
+		{
+			"selector": ".item",
+			"index": 1,
+			"property": "opacity",
+			"from": 0,
+			"to": 1,
+			"startMs": 220,
+			"durationMs": 800,
+			"easing": {
+				"type": "cubic-bezier",
+				"p": [0.25, 1, 0.5, 1]
+			},
+			"iterations": 1,
+			"source": "gsap"
+		},
+		{
+			"selector": ".item",
+			"index": 1,
+			"property": "translateY",
+			"from": 40,
+			"to": 0,
+			"startMs": 220,
+			"durationMs": 800,
+			"easing": {
+				"type": "cubic-bezier",
+				"p": [0.25, 1, 0.5, 1]
+			},
+			"iterations": 1,
+			"source": "gsap"
+		},
+		{
+			"selector": ".item",
+			"index": 2,
+			"property": "opacity",
+			"from": 0,
+			"to": 1,
+			"startMs": 340,
+			"durationMs": 800,
+			"easing": {
+				"type": "cubic-bezier",
+				"p": [0.25, 1, 0.5, 1]
+			},
+			"iterations": 1,
+			"source": "gsap"
+		},
+		{
+			"selector": ".item",
+			"index": 2,
+			"property": "translateY",
+			"from": 40,
+			"to": 0,
+			"startMs": 340,
+			"durationMs": 800,
+			"easing": {
+				"type": "cubic-bezier",
+				"p": [0.25, 1, 0.5, 1]
+			},
+			"iterations": 1,
+			"source": "gsap"
+		}
+	]
+}

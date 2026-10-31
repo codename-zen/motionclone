@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>css-marquee</title>
+<style>
+*{box-sizing:border-box}
+:root{--accent:#2f6fed;--ink:#1d1d1f;--mute:#6e6e73;--line:#d2d2d7;--bg:#f5f5f7}
+body{margin:0;padding:48px;min-height:800px;font:16px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--ink)}
+h1{margin:0 0 24px;font-size:20px;font-weight:600}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:20px}
+.card b{color:var(--accent)}
+.viewport{overflow:hidden;border-block:1px solid var(--line);background:#fff}
+.row{display:flex;width:2400px;animation:scroll 12000ms linear infinite}
+.group{display:flex;flex:0 0 1200px;width:1200px}
+.group span{flex:0 0 300px;padding:24px 0;text-align:center;font-weight:600;color:var(--accent)}
+@keyframes scroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+</style>
+</head>
+<body>
+<h1>Marquee</h1>
+<div class="viewport"><div class="row">
+<div class="group"><span>Alpha</span><span>Bravo</span><span>Charlie</span><span>Delta</span></div>
+<div class="group"><span>Alpha</span><span>Bravo</span><span>Charlie</span><span>Delta</span></div>
+</div></div>
+</body>
+</html>

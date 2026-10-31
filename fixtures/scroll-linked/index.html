@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>scroll-linked</title>
+<style>
+*{box-sizing:border-box}
+:root{--accent:#2f6fed;--ink:#1d1d1f;--mute:#6e6e73;--line:#d2d2d7;--bg:#f5f5f7}
+body{margin:0;padding:48px;min-height:800px;font:16px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--ink)}
+h1{margin:0 0 24px;font-size:20px;font-weight:600}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:20px}
+.card b{color:var(--accent)}
+body{height:2000px;padding-top:72px}
+.progress{position:fixed;inset:0 0 auto 0;height:6px;background:var(--accent);transform-origin:0 50%;transform:scaleX(0);animation:grow linear both;animation-timeline:scroll(root block)}
+.reveal{position:absolute;top:900px;left:48px;width:480px;height:160px;opacity:0;animation:fade linear both;animation-timeline:scroll(root block);animation-range:200px 600px}
+@keyframes grow{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+</style>
+</head>
+<body>
+<div class="progress"></div>
+<h1>Scroll linked</h1>
+<p>Scroll down 1200px.</p>
+<div class="reveal card">Fades in between 200px and 600px</div>
+</body>
+</html>

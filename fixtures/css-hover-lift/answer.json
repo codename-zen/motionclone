@@ -1,0 +1,30 @@
+{
+	"name": "css-hover-lift",
+	"description": "Card lifts 6px on hover; transform and box-shadow transition 220ms. Only translateY is listed.",
+	"viewport": {
+		"width": 1280,
+		"height": 800
+	},
+	"trigger": {
+		"type": "hover",
+		"target": ".card"
+	},
+	"captureMs": 600,
+	"rows": [
+		{
+			"selector": ".card",
+			"index": 0,
+			"property": "translateY",
+			"from": 0,
+			"to": -6,
+			"startMs": 0,
+			"durationMs": 220,
+			"easing": {
+				"type": "cubic-bezier",
+				"p": [0.2, 0.8, 0.2, 1]
+			},
+			"iterations": 1,
+			"source": "css-transition"
+		}
+	]
+}

@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>waapi-sequence</title>
+<style>
+*{box-sizing:border-box}
+:root{--accent:#2f6fed;--ink:#1d1d1f;--mute:#6e6e73;--line:#d2d2d7;--bg:#f5f5f7}
+body{margin:0;padding:48px;min-height:800px;font:16px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--ink)}
+h1{margin:0 0 24px;font-size:20px;font-weight:600}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:20px}
+.card b{color:var(--accent)}
+.box{width:96px;height:96px;border-radius:12px;background:var(--accent)}
+</style>
+</head>
+<body>
+<h1>WAAPI sequence</h1>
+<div class="box"></div>
+<script>
+const box = document.querySelector(".box");
+box.animate(
+	[{ translate: "0 0" }, { translate: "240px 0" }],
+	{ duration: 600, easing: "cubic-bezier(0.65,0,0.35,1)", fill: "forwards" },
+);
+box.animate(
+	[{ rotate: "0deg" }, { rotate: "90deg" }],
+	{ duration: 400, delay: 600, easing: "linear", fill: "both" },
+);
+</script>
+</body>
+</html>

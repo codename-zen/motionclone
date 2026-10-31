@@ -1,0 +1,43 @@
+{
+	"name": "waapi-sequence",
+	"description": "Two element.animate() calls: translateX 0->240px (600ms), then rotate 0->90deg (400ms, delay 600ms, linear).",
+	"viewport": {
+		"width": 1280,
+		"height": 800
+	},
+	"trigger": {
+		"type": "load"
+	},
+	"captureMs": 1300,
+	"rows": [
+		{
+			"selector": ".box",
+			"index": 0,
+			"property": "translateX",
+			"from": 0,
+			"to": 240,
+			"startMs": 0,
+			"durationMs": 600,
+			"easing": {
+				"type": "cubic-bezier",
+				"p": [0.65, 0, 0.35, 1]
+			},
+			"iterations": 1,
+			"source": "waapi"
+		},
+		{
+			"selector": ".box",
+			"index": 0,
+			"property": "rotate",
+			"from": 0,
+			"to": 90,
+			"startMs": 600,
+			"durationMs": 400,
+			"easing": {
+				"type": "linear"
+			},
+			"iterations": 1,
+			"source": "waapi"
+		}
+	]
+}

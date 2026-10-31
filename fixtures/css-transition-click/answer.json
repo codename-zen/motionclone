@@ -1,0 +1,45 @@
+{
+	"name": "css-transition-click",
+	"description": "Clicking the button opens a panel: opacity 0->1 and scale 0.96->1, 180ms ease-out.",
+	"viewport": {
+		"width": 1280,
+		"height": 800
+	},
+	"trigger": {
+		"type": "click",
+		"target": ".toggle"
+	},
+	"captureMs": 600,
+	"rows": [
+		{
+			"selector": ".panel",
+			"index": 0,
+			"property": "opacity",
+			"from": 0,
+			"to": 1,
+			"startMs": 0,
+			"durationMs": 180,
+			"easing": {
+				"type": "cubic-bezier",
+				"p": [0, 0, 0.58, 1]
+			},
+			"iterations": 1,
+			"source": "css-transition"
+		},
+		{
+			"selector": ".panel",
+			"index": 0,
+			"property": "scale",
+			"from": 0.96,
+			"to": 1,
+			"startMs": 0,
+			"durationMs": 180,
+			"easing": {
+				"type": "cubic-bezier",
+				"p": [0, 0, 0.58, 1]
+			},
+			"iterations": 1,
+			"source": "css-transition"
+		}
+	]
+}

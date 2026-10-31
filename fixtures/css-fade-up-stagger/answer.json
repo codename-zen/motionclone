@@ -1,0 +1,134 @@
+{
+	"name": "css-fade-up-stagger",
+	"description": "Four cards fade in and rise 32px, 700ms, delays 200 + i*90 ms, on load.",
+	"viewport": {
+		"width": 1280,
+		"height": 800
+	},
+	"trigger": {
+		"type": "load"
+	},
+	"captureMs": 1500,
+	"rows": [
+		{
+			"selector": ".card",
+			"index": 0,
+			"property": "opacity",
+			"from": 0,
+			"to": 1,
+			"startMs": 200,
+			"durationMs": 700,
+			"easing": {
+				"type": "cubic-bezier",
+				"p": [0.16, 1, 0.3, 1]
+			},
+			"iterations": 1,
+			"source": "css-animation"
+		},
+		{
+			"selector": ".card",
+			"index": 0,
+			"property": "translateY",
+			"from": 32,
+			"to": 0,
+			"startMs": 200,
+			"durationMs": 700,
+			"easing": {
+				"type": "cubic-bezier",
+				"p": [0.16, 1, 0.3, 1]
+			},
+			"iterations": 1,
+			"source": "css-animation"
+		},
+		{
+			"selector": ".card",
+			"index": 1,
+			"property": "opacity",
+			"from": 0,
+			"to": 1,
+			"startMs": 290,
+			"durationMs": 700,
+			"easing": {
+				"type": "cubic-bezier",
+				"p": [0.16, 1, 0.3, 1]
+			},
+			"iterations": 1,
+			"source": "css-animation"
+		},
+		{
+			"selector": ".card",
+			"index": 1,
+			"property": "translateY",
+			"from": 32,
+			"to": 0,
+			"startMs": 290,
+			"durationMs": 700,
+			"easing": {
+				"type": "cubic-bezier",
+				"p": [0.16, 1, 0.3, 1]
+			},
+			"iterations": 1,
+			"source": "css-animation"
+		},
+		{
+			"selector": ".card",
+			"index": 2,
+			"property": "opacity",
+			"from": 0,
+			"to": 1,
+			"startMs": 380,
+			"durationMs": 700,
+			"easing": {
+				"type": "cubic-bezier",
+				"p": [0.16, 1, 0.3, 1]
+			},
+			"iterations": 1,
+			"source": "css-animation"
+		},
+		{
+			"selector": ".card",
+			"index": 2,
+			"property": "translateY",
+			"from": 32,
+			"to": 0,
+			"startMs": 380,
+			"durationMs": 700,
+			"easing": {
+				"type": "cubic-bezier",
+				"p": [0.16, 1, 0.3, 1]
+			},
+			"iterations": 1,
+			"source": "css-animation"
+		},
+		{
+			"selector": ".card",
+			"index": 3,
+			"property": "opacity",
+			"from": 0,
+			"to": 1,
+			"startMs": 470,
+			"durationMs": 700,
+			"easing": {
+				"type": "cubic-bezier",
+				"p": [0.16, 1, 0.3, 1]
+			},
+			"iterations": 1,
+			"source": "css-animation"
+		},
+		{
+			"selector": ".card",
+			"index": 3,
+			"property": "translateY",
+			"from": 32,
+			"to": 0,
+			"startMs": 470,
+			"durationMs": 700,
+			"easing": {
+				"type": "cubic-bezier",
+				"p": [0.16, 1, 0.3, 1]
+			},
+			"iterations": 1,
+			"source": "css-animation"
+		}
+	]
+}

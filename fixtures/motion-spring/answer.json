@@ -1,0 +1,32 @@
+{
+	"name": "motion-spring",
+	"description": "Motion animate() translateX 0->200px, spring stiffness 300, damping 20, mass 1, on click. durationMs is the 2% settle time of the exact response (last time it leaves the 0.98 to 1.02 band), 340 ms; zeta = c / (2 * sqrt(k * m)) = 0.577. The envelope bound ln(1 / 0.02) / (c / 2m) = 391 ms is an upper limit, not the settle time.",
+	"viewport": {
+		"width": 1280,
+		"height": 800
+	},
+	"trigger": {
+		"type": "click",
+		"target": ".go"
+	},
+	"captureMs": 1200,
+	"rows": [
+		{
+			"selector": ".box",
+			"index": 0,
+			"property": "translateX",
+			"from": 0,
+			"to": 200,
+			"startMs": 0,
+			"durationMs": 340,
+			"easing": {
+				"type": "spring",
+				"stiffness": 300,
+				"damping": 20,
+				"mass": 1
+			},
+			"iterations": 1,
+			"source": "motion"
+		}
+	]
+}

@@ -1,0 +1,74 @@
+{
+	"name": "reduced-motion",
+	"description": "Two cards fade up like css-fade-up-stagger, but only inside @media (prefers-reduced-motion: no-preference). With prefers-reduced-motion: reduce the animation is disabled and the cards are static. Rows describe the no-preference case.",
+	"viewport": {
+		"width": 1280,
+		"height": 800
+	},
+	"trigger": {
+		"type": "load"
+	},
+	"captureMs": 1300,
+	"rows": [
+		{
+			"selector": ".card",
+			"index": 0,
+			"property": "opacity",
+			"from": 0,
+			"to": 1,
+			"startMs": 200,
+			"durationMs": 700,
+			"easing": {
+				"type": "cubic-bezier",
+				"p": [0.16, 1, 0.3, 1]
+			},
+			"iterations": 1,
+			"source": "css-animation"
+		},
+		{
+			"selector": ".card",
+			"index": 0,
+			"property": "translateY",
+			"from": 32,
+			"to": 0,
+			"startMs": 200,
+			"durationMs": 700,
+			"easing": {
+				"type": "cubic-bezier",
+				"p": [0.16, 1, 0.3, 1]
+			},
+			"iterations": 1,
+			"source": "css-animation"
+		},
+		{
+			"selector": ".card",
+			"index": 1,
+			"property": "opacity",
+			"from": 0,
+			"to": 1,
+			"startMs": 290,
+			"durationMs": 700,
+			"easing": {
+				"type": "cubic-bezier",
+				"p": [0.16, 1, 0.3, 1]
+			},
+			"iterations": 1,
+			"source": "css-animation"
+		},
+		{
+			"selector": ".card",
+			"index": 1,
+			"property": "translateY",
+			"from": 32,
+			"to": 0,
+			"startMs": 290,
+			"durationMs": 700,
+			"easing": {
+				"type": "cubic-bezier",
+				"p": [0.16, 1, 0.3, 1]
+			},
+			"iterations": 1,
+			"source": "css-animation"
+		}
+	]
+}

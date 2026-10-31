@@ -1,0 +1,51 @@
+{
+	"name": "scroll-linked",
+	"description": "Page is 2000px tall in an 800px viewport, so scroll runs 0..1200px. Progress bar scaleX 0->1 over 0..1200px; .reveal opacity 0->1 over 200..600px. durationMs is nominal and equals the scroll distance in px.",
+	"viewport": {
+		"width": 1280,
+		"height": 800
+	},
+	"trigger": {
+		"type": "scroll",
+		"toPx": 1200
+	},
+	"captureMs": 2000,
+	"rows": [
+		{
+			"selector": ".progress",
+			"index": 0,
+			"property": "scale",
+			"from": 0,
+			"to": 1,
+			"startMs": 0,
+			"durationMs": 1200,
+			"easing": {
+				"type": "linear"
+			},
+			"iterations": 1,
+			"source": "css-animation",
+			"scrollLinked": {
+				"startPx": 0,
+				"endPx": 1200
+			}
+		},
+		{
+			"selector": ".reveal",
+			"index": 0,
+			"property": "opacity",
+			"from": 0,
+			"to": 1,
+			"startMs": 0,
+			"durationMs": 400,
+			"easing": {
+				"type": "linear"
+			},
+			"iterations": 1,
+			"source": "css-animation",
+			"scrollLinked": {
+				"startPx": 200,
+				"endPx": 600
+			}
+		}
+	]
+}

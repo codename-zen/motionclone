@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>css-transition-click</title>
+<style>
+*{box-sizing:border-box}
+:root{--accent:#2f6fed;--ink:#1d1d1f;--mute:#6e6e73;--line:#d2d2d7;--bg:#f5f5f7}
+body{margin:0;padding:48px;min-height:800px;font:16px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--ink)}
+h1{margin:0 0 24px;font-size:20px;font-weight:600}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:20px}
+.card b{color:var(--accent)}
+.toggle{font:inherit;padding:10px 18px;border:0;border-radius:8px;background:var(--accent);color:#fff;cursor:pointer}
+.panel{width:360px;margin-top:20px;opacity:0;scale:0.96;transition:opacity 180ms cubic-bezier(0,0,0.58,1),scale 180ms cubic-bezier(0,0,0.58,1)}
+.panel.open{opacity:1;scale:1}
+</style>
+</head>
+<body>
+<h1>Click transition</h1>
+<button class="toggle" type="button">Toggle panel</button>
+<div class="panel card">Panel content</div>
+<script>
+document.querySelector(".toggle").addEventListener("click", () => {
+	document.querySelector(".panel").classList.toggle("open");
+});
+</script>
+</body>
+</html>

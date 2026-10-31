@@ -1,0 +1,30 @@
+{
+	"name": "css-steps-loader",
+	"description": "An 800px sprite strip in a 100px window steps through 8 frames, steps(8, end), 800ms, infinite.",
+	"viewport": {
+		"width": 1280,
+		"height": 800
+	},
+	"trigger": {
+		"type": "none"
+	},
+	"captureMs": 1700,
+	"rows": [
+		{
+			"selector": ".strip",
+			"index": 0,
+			"property": "translateX",
+			"from": 0,
+			"to": -800,
+			"startMs": 0,
+			"durationMs": 800,
+			"easing": {
+				"type": "steps",
+				"count": 8,
+				"position": "end"
+			},
+			"iterations": "infinite",
+			"source": "css-animation"
+		}
+	]
+}

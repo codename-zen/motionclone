@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>css-steps-loader</title>
+<style>
+*{box-sizing:border-box}
+:root{--accent:#2f6fed;--ink:#1d1d1f;--mute:#6e6e73;--line:#d2d2d7;--bg:#f5f5f7}
+body{margin:0;padding:48px;min-height:800px;font:16px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--ink)}
+h1{margin:0 0 24px;font-size:20px;font-weight:600}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:20px}
+.card b{color:var(--accent)}
+.window{width:100px;height:100px;overflow:hidden;border:1px solid var(--line);border-radius:12px;background:#fff}
+.strip{display:flex;width:800px;height:100px;animation:frames 800ms steps(8,end) infinite}
+.strip span{flex:0 0 100px;display:grid;place-items:center;font-weight:600;color:var(--accent)}
+.strip span:nth-child(odd){background:#eef3fe}
+@keyframes frames{from{transform:translateX(0)}to{transform:translateX(-800px)}}
+</style>
+</head>
+<body>
+<h1>Steps loader</h1>
+<div class="window"><div class="strip"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span></div></div>
+</body>
+</html>

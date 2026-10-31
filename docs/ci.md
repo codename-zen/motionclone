@@ -9,8 +9,8 @@ Windows is covered by local runs, since development happens on Windows; there is
 
 ## Runner
 
-| Runner | Where | Labels |
-|---|---|---|
+| Runner    | Where                                                                      | Labels                                    |
+| --------- | -------------------------------------------------------------------------- | ----------------------------------------- |
 | `homelab` | homelab, container `gh-runner-motionclone` in `~/docker/gh-runner-motionclone` | `self-hosted, linux, homelab, node-linux` |
 
 The image is the official actions runner plus the Chromium system libraries Playwright needs.

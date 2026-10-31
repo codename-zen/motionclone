@@ -1,0 +1,3 @@
+useNodeVersion: 26.13.0
+onlyBuiltDependencies:
+  - ffmpeg-static

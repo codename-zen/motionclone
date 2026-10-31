@@ -29,7 +29,8 @@ jobs:
       - run: pnpm exec playwright install chromium
       - run: pnpm exec biome ci .
       - run: pnpm exec tsc --noEmit
-      - run: pnpm exec vitest run
-        timeout-minutes: 15
+      # Build first so the CLI tests also run against dist/.
       - run: pnpm build
       - run: node dist/cli.js --version
+      - run: pnpm exec vitest run
+        timeout-minutes: 15

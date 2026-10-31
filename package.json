@@ -1,5 +1,5 @@
 {
-	"name": "@ganisigit/motionclone",
+	"name": "@codename-zen/motionclone",
 	"version": "0.0.0",
 	"description": "Measure web motion as numbers, rebuild it, and prove the rebuild moves the same way.",
 	"license": "MIT",

@@ -140,6 +140,8 @@ function draftRow(
 			"measured from the track: JavaScript timelines count from script time, 16 ms before t=0",
 		);
 	else notes.push("measured from the track");
+	// Same free-timing deviation verify computes, so an identical clone always passes.
+	const residual = curveDeviation(fit.samples, fit.hint, easing).max;
 	return {
 		id: `${elementKey(m.selector, m.index)}.${m.property}`,
 		selector: m.selector,
@@ -155,6 +157,7 @@ function draftRow(
 		source: declared ? "declared" : "measured",
 		confidence: declared ? "high" : confidenceOf(timing.rmse),
 		rmse: Number(timing.rmse.toExponential(3)),
+		easingResidual: Math.ceil(residual * 1e4) / 1e4,
 		stagger: null,
 		tolerances: { ...DEFAULT_TOLERANCES },
 		notes,

@@ -150,13 +150,15 @@ export function checkMotionRow(
 	if (!duration.pass || (!endM.pass && start.pass)) focus.push(end, gotEnd);
 
 	const dev = curveDeviation(c.fit.samples, c.fit.hint, row.easing);
+	// The clone cannot be held closer to the spec curve than the reference itself is.
+	const easingTol = tol.easing + row.easingResidual;
 	const easing: Metric = {
 		want: 0,
 		got: dev.max,
 		diff: dev.max,
-		tol: tol.easing,
+		tol: easingTol,
 		unit: "progress",
-		pass: dev.max <= tol.easing,
+		pass: dev.max <= easingTol,
 	};
 	metrics.easing = easing;
 	if (!easing.pass) {

@@ -77,6 +77,8 @@ export const SpecRow = z.object({
 	confidence: z.enum(["high", "medium", "low"]),
 	/** Fit error of the spec curve against the reference track, in progress units. */
 	rmse: z.number().nonnegative(),
+	/** Largest deviation of the reference itself from `easing` (timing fitted freely); verify allows this on top of the easing tolerance. */
+	easingResidual: z.number().nonnegative().default(0),
 	/** Start gap to the previous index of the same selector and property. */
 	stagger: z.object({ after: z.string(), gapMs: z.number() }).nullable(),
 	tolerances: Tolerances.prefault({}),

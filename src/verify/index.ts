@@ -2,8 +2,12 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { readTrack } from "../measure/elements.ts";
 import { readCaptureFile } from "../spec/capture-file.ts";
+import { observationModel } from "../spec/observe.ts";
 import { SpecFile } from "../spec/schema.ts";
+import { advisoryReason } from "./advisory.ts";
 import { type CloneMotion, indexClone, measureClone } from "./clone.ts";
+import { checkCoverage } from "./coverage.ts";
+import { evidenceOf } from "./evidence.ts";
 import { guardrails } from "./guardrails.ts";
 import { type MapEntry, parseMap, renameTrack } from "./map.ts";
 import {
@@ -17,7 +21,12 @@ import {
 	type StaggerAnchor,
 	startMetric,
 } from "./rows.ts";
-import { type RowVerdict, VERDICT_VERSION, Verdict } from "./schema.ts";
+import {
+	type Coverage,
+	type RowVerdict,
+	VERDICT_VERSION,
+	Verdict,
+} from "./schema.ts";
 import { isVideoCapture, setupErrors } from "./setup.ts";
 
 export interface VerifyOptions {
@@ -70,6 +79,7 @@ export async function verify(
 		);
 	const rows: RowVerdict[] = [];
 	let pixel: Verdict["pixel"] = null;
+	let coverage: Coverage | null = null;
 	if (errors.length === 0) {
 		const idx = indexClone(renameTrack(cloneTrack, map));
 		// Video distances are CSS px; the region box and the element box differ in size, so a relative distance would not compare.
@@ -91,16 +101,20 @@ export async function verify(
 					startPass: startMetric(r, c, idx.frameMs).pass,
 				});
 		}
+		const model = observationModel(refCap);
 		for (const r of specRows) {
 			const anchor = r.stagger ? (anchors.get(r.stagger.after) ?? null) : null;
-			rows.push(
-				checkMotionRow(
+			const evidence = r.fromObserved ? null : evidenceOf(refTrack, r, model);
+			rows.push({
+				...checkMotionRow(
 					r,
 					measured.get(r.id) as CloneMotion,
 					idx.frameMs,
 					anchor,
+					evidence,
 				),
-			);
+				advisory: advisoryReason(r),
+			});
 		}
 		for (const s of spec.still) rows.push(checkStill(s, idx));
 		const threshold = opts.pixelThreshold ?? DEFAULT_PIXEL_THRESHOLD;
@@ -110,8 +124,10 @@ export async function verify(
 					enforced: fidelity === "pixel",
 					threshold,
 				});
+		coverage = await checkCoverage(spec, ref, refTrack, refCap.clip, video);
 	}
-	const passed = rows.filter((r) => r.pass).length;
+	const checked = rows.filter((r) => r.advisory === null);
+	const passed = checked.filter((r) => r.pass).length;
 	const verdict = Verdict.parse({
 		version: VERDICT_VERSION,
 		referenceDir: ref,
@@ -123,9 +139,17 @@ export async function verify(
 		warnings: errors.length
 			? []
 			: await guardrails(clone, { reducedClone: opts.reducedClone }),
-		summary: { rows: rows.length, passed, failed: rows.length - passed },
+		coverage,
+		summary: {
+			rows: rows.length,
+			passed,
+			failed: checked.length - passed,
+			advisory: rows.length - checked.length,
+		},
 		pass:
-			errors.length === 0 && passed === rows.length && (pixel?.pass ?? false),
+			errors.length === 0 &&
+			passed === checked.length &&
+			(pixel?.pass ?? false),
 	});
 	if (opts.outDir !== false)
 		await writeFile(join(opts.outDir ?? clone, "verdict.json"), json(verdict));

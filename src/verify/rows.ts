@@ -1,36 +1,32 @@
-import { curveDeviation } from "../spec/deviation.ts";
 import type { SpecRow, StillEntry } from "../spec/schema.ts";
 import type { CloneIndex, CloneMotion } from "./clone.ts";
 import {
+	type Evidence,
+	evidenceMessage,
+	evidenceMetric,
+	PARTIAL_NOTE,
+} from "./evidence.ts";
+import {
 	directionMessage,
 	distanceMessage,
-	easingMessage,
 	missingMessage,
 	overshootMessage,
-	staggerMessage,
 	staticMessage,
 	timingMessage,
 	unitOf,
 } from "./messages.ts";
 import type { Metric, RowVerdict } from "./schema.ts";
+import {
+	checkTimingAndEasing,
+	frameTol,
+	metric,
+	type StaggerAnchor,
+	startFocus,
+} from "./timing.ts";
+
+export type { StaggerAnchor } from "./timing.ts";
 
 type Moving = Extract<CloneMotion, { status: "moving" }>;
-
-/** The previous stagger sibling's measured start, when its own start is within tolerance. */
-export interface StaggerAnchor {
-	startMs: number;
-	startPass: boolean;
-}
-
-const metric = (
-	want: number,
-	got: number,
-	diff: number,
-	tol: number,
-	unit: string,
-): Metric => ({ want, got, diff, tol, unit, pass: Math.abs(diff) <= tol });
-
-const frameTol = (tol: number, frameMs: number) => Math.max(tol, frameMs);
 
 export function startMetric(row: SpecRow, c: Moving, frameMs: number): Metric {
 	return metric(
@@ -49,6 +45,7 @@ function verdictOf(
 	metrics: Record<string, Metric>,
 	failures: string[],
 	focusMs: number[],
+	notes: string[] = [],
 ): RowVerdict {
 	const pass = failures.length === 0;
 	return {
@@ -62,13 +59,9 @@ function verdictOf(
 		failures,
 		message: pass ? `${row.id} matches the spec` : failures.join("; "),
 		focusMs: [...new Set(focusMs.map((t) => Math.round(t)))],
+		notes,
+		advisory: null,
 	};
-}
-
-// Moments where one side has started and the other has not, then shortly after the later start.
-function startFocus(row: SpecRow, c: Moving): number[] {
-	const later = Math.max(row.startMs, c.startMs);
-	return [(row.startMs + c.startMs) / 2, later, later + row.durationMs / 4];
 }
 
 export function checkMotionRow(
@@ -76,6 +69,7 @@ export function checkMotionRow(
 	c: CloneMotion,
 	frameMs: number,
 	anchor: StaggerAnchor | null,
+	evidence: Evidence | null = null,
 ): RowVerdict {
 	const end = row.startMs + row.durationMs;
 	const span = [row.startMs, row.startMs + row.durationMs / 2, end];
@@ -108,63 +102,25 @@ export function checkMotionRow(
 	const focus: number[] = [];
 
 	const start = startMetric(row, c, frameMs);
-	const duration = metric(
-		row.durationMs,
-		c.durationMs,
-		c.durationMs - row.durationMs,
-		frameTol(tol.durationMs, frameMs),
-		"ms",
-	);
-	const gotEnd = c.startMs + c.durationMs;
-	const endM = metric(
-		end,
-		gotEnd,
-		gotEnd - end,
-		frameTol(tol.endMs, frameMs),
-		"ms",
-	);
-	Object.assign(metrics, { start, duration, end: endM });
+	metrics.start = start;
 	if (!start.pass) {
 		failures.push(timingMessage(row, "start", start));
 		focus.push(...startFocus(row, c));
 	}
-	if (row.stagger && anchor?.startPass) {
-		const gap = c.startMs - anchor.startMs;
-		const m = metric(
-			row.stagger.gapMs,
-			gap,
-			gap - row.stagger.gapMs,
-			frameTol(tol.staggerMs, frameMs),
-			"ms",
-		);
-		metrics.stagger = m;
+	const partial = !row.fromObserved && evidence !== null;
+	if (partial) {
+		const m = evidenceMetric(row, c, evidence);
+		metrics.evidence = m;
 		if (!m.pass) {
-			failures.push(staggerMessage(row, m));
-			focus.push(...startFocus(row, c));
+			failures.push(evidenceMessage(row, m));
+			focus.push(...span);
 		}
-	}
-	if (!duration.pass) failures.push(timingMessage(row, "duration", duration));
-	// A late start or a long run already explains a late end.
-	if (!endM.pass && start.pass && duration.pass)
-		failures.push(timingMessage(row, "end", endM));
-	if (!duration.pass || (!endM.pass && start.pass)) focus.push(end, gotEnd);
-
-	const dev = curveDeviation(c.fit.samples, c.fit.hint, row.easing);
-	// The clone cannot be held closer to the spec curve than the reference itself is.
-	const easingTol = tol.easing + row.easingResidual;
-	const easing: Metric = {
-		want: 0,
-		got: dev.max,
-		diff: dev.max,
-		tol: easingTol,
-		unit: "progress",
-		pass: dev.max <= easingTol,
-	};
-	metrics.easing = easing;
-	if (!easing.pass) {
-		failures.push(easingMessage(row, c, easing));
-		focus.push(dev.atMs, row.startMs + row.durationMs / 4);
-	}
+	} else
+		checkTimingAndEasing(row, c, frameMs, anchor, start, {
+			metrics,
+			failures,
+			focus,
+		});
 
 	const overshoot = metric(
 		row.overshoot * 100,
@@ -202,7 +158,7 @@ export function checkMotionRow(
 		? (row.relativeDistance as number)
 		: Math.abs(row.to - row.from);
 	const gotDist = relative ? (w.relative as number) : Math.abs(w.change);
-	if (wantDist > 0) {
+	if (!partial && wantDist > 0) {
 		const distance = metric(
 			wantDist,
 			gotDist,
@@ -223,6 +179,7 @@ export function checkMotionRow(
 		metrics,
 		failures,
 		focus.length ? focus : span,
+		partial ? [PARTIAL_NOTE] : [],
 	);
 }
 

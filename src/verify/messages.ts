@@ -16,6 +16,14 @@ export function unitOf(property: string): string {
 	return property === "rotate" ? " deg" : " px";
 }
 
+const NEVER: Record<string, string> = {
+	blur: "blurs",
+	scale: "scales",
+	scaleX: "scales horizontally",
+	scaleY: "scales vertically",
+	rotate: "rotates",
+};
+
 export function timingMessage(
 	row: SpecRow,
 	what: "start" | "end" | "duration",
@@ -68,8 +76,15 @@ export function distanceMessage(row: SpecRow, c: Moving, m: Metric): string {
 export const directionMessage = (row: SpecRow, c: Moving) =>
 	`${rowLabel(row)} moves the wrong way (want ${num(row.from)} -> ${num(row.to)}, got ${num(c.motion.window.from)} -> ${num(c.motion.window.to)})`;
 
-export const staticMessage = (row: SpecRow, standIns: string[]) =>
-	`${rowLabel(row)} does not move in the clone (want ${num(row.from)} -> ${num(row.to)} from ${ms(row.startMs)} ms over ${ms(row.durationMs)} ms)${standIns.length ? `; it moves its layout box (${standIns.join(", ")}) instead: animate ${row.property}` : ""}`;
+export function staticMessage(row: SpecRow, standIns: string[]): string {
+	const unit = unitOf(row.property);
+	const want = `want ${num(row.from)}${unit} -> ${num(row.to)}${unit} from ${ms(row.startMs)} ms over ${ms(row.durationMs)} ms`;
+	const never = NEVER[row.property];
+	const head = never
+		? `${rowLabel(row)} missing: ${want}, the clone never ${never}`
+		: `${rowLabel(row)} does not move in the clone (${want})`;
+	return `${head}${standIns.length ? `; it moves its layout box (${standIns.join(", ")}) instead: animate ${row.property}` : ""}`;
+}
 
 export const missingMessage = (
 	selector: string,

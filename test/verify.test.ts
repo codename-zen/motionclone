@@ -230,6 +230,22 @@ describe("setup, report and sheets", () => {
 		);
 		expect(info.tiles.length % 3).toBe(0);
 		expect(png.width).toBe(3 * info.tileWidth + 4 * 8);
+		// The header (id, message, column titles) and the per-row time labels are drawn, not blank.
+		const lit = (x0: number, y0: number, w: number, h: number) => {
+			let n = 0;
+			for (let y = y0; y < y0 + h; y++)
+				for (let x = x0; x < x0 + w; x++)
+					if ((png.data[(y * png.width + x) * 4] ?? 0) > 150) n++;
+			return n;
+		};
+		expect(info.headerHeight).toBeGreaterThan(3 * 20);
+		expect(lit(0, 0, png.width, info.headerHeight)).toBeGreaterThan(100);
+		const rows = info.tiles.length / 3;
+		expect(png.height).toBe(
+			info.headerHeight + rows * (20 + info.tileHeight + 8),
+		);
+		expect(info.tiles[0].y).toBe(info.headerHeight + 20);
+		expect(lit(8, info.headerHeight, 72, 20)).toBeGreaterThan(20);
 		// The failing moment: after the wanted start (380 ms) but before the clone's (500 ms), then after both.
 		const times = info.tiles.map((t: { t: number }) => t.t);
 		expect(times.some((t: number) => t > 380 && t < 500)).toBe(true);

@@ -1,5 +1,10 @@
+import type { AnimationRecord } from "../capture/types.ts";
 import { type MovingProperty, readTrack } from "../measure/elements.ts";
-import { readAnimations, readCaptureFile } from "../spec/capture-file.ts";
+import {
+	readAnimations,
+	readCaptureFile,
+	readTrackedPaths,
+} from "../spec/capture-file.ts";
 import { candidateEasing, unitCurve } from "../spec/easing.ts";
 import { elementKey, fitMotion, motionProperties } from "../spec/motion.ts";
 import type { Guardrail } from "./schema.ts";
@@ -14,6 +19,28 @@ const TRANSFORM_FOR: Record<string, string> = {
 	height: "scaleY",
 };
 
+const TRANSFORM_PROPS = /^(transform|translate|scale|rotate)$/;
+
+const animatesTransform = (a: AnimationRecord): boolean =>
+	(a.properties ?? []).some((p) => TRANSFORM_PROPS.test(p)) ||
+	(a.type === "CSSTransition" && TRANSFORM_PROPS.test(a.name));
+
+/** True when a transform animation on an ancestor of the tracked element moves its box. */
+function movedByAncestor(
+	animations: AnimationRecord[],
+	paths: Record<string, string[]>,
+	m: MovingProperty,
+): boolean {
+	const own = paths[m.selector]?.[m.index];
+	if (!own) return false;
+	return animations.some(
+		(a) =>
+			a.nodePath !== null &&
+			own.startsWith(`${a.nodePath} > `) &&
+			animatesTransform(a),
+	);
+}
+
 // Ends at the element's resting state: opacity rising to visible, or a transform settling at identity.
 function isEntrance(m: MovingProperty): boolean {
 	const { from, to } = m.window;
@@ -26,7 +53,8 @@ function isEntrance(m: MovingProperty): boolean {
 }
 
 function layoutWarnings(
-	animations: Awaited<ReturnType<typeof readAnimations>>,
+	animations: AnimationRecord[],
+	paths: Record<string, string[]>,
 	motions: MovingProperty[],
 	scrolls: boolean,
 ): Guardrail[] {
@@ -41,7 +69,7 @@ function layoutWarnings(
 	// Scrolling moves every box, so box motion says nothing about layout animation then.
 	if (scrolls) return out;
 	for (const m of motions)
-		if (BOX_PROPS.has(m.property))
+		if (BOX_PROPS.has(m.property) && !movedByAncestor(animations, paths, m))
 			out.push({
 				rule: "layout-property",
 				target: elementKey(m.selector, m.index),
@@ -100,15 +128,17 @@ export async function guardrails(
 	cloneDir: string,
 	{ reducedClone }: { reducedClone?: string } = {},
 ): Promise<Guardrail[]> {
-	const [cap, track, animations] = await Promise.all([
+	const [cap, track, animations, paths] = await Promise.all([
 		readCaptureFile(cloneDir),
 		readTrack(cloneDir),
 		readAnimations(cloneDir),
+		readTrackedPaths(cloneDir),
 	]);
 	const motions = motionProperties(track);
 	return [
 		...layoutWarnings(
 			animations,
+			paths,
 			motions,
 			cap.options.trigger.type === "scroll",
 		),

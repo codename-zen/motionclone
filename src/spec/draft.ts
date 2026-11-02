@@ -1,30 +1,31 @@
 import { writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import type { AnimationRecord } from "../capture/types.ts";
-import { type MovingProperty, readTrack } from "../measure/elements.ts";
+import {
+	type MovingProperty,
+	readTrack,
+	type Track,
+} from "../measure/elements.ts";
 import { VERSION } from "../version.ts";
 import {
 	type CaptureFile,
 	readAnimations,
 	readCaptureFile,
 } from "./capture-file.ts";
-import { type CurveDeviation, curveDeviation } from "./deviation.ts";
-import {
-	candidateEasing,
-	curveSpanMs,
-	declaredEasing,
-	easingLabel,
-} from "./easing.ts";
+import { supportOf } from "./confidence.ts";
+import { matchDeclared, type Timing } from "./declared.ts";
+import { curveDeviation } from "./deviation.ts";
+import { candidateEasing, easingLabel } from "./easing.ts";
 import {
 	elementKey,
-	type FittedMotion,
 	fitMotion,
 	motionProperties,
 	trackedElements,
 } from "./motion.ts";
+import { type Observed, observationModel, observe } from "./observe.ts";
+import { fitPartialRows, type PartialFit } from "./partial.ts";
 import {
 	DEFAULT_TOLERANCES,
-	type Easing,
 	SPEC_VERSION,
 	SpecFile,
 	type SpecRow,
@@ -33,92 +34,12 @@ import {
 const r1 = (v: number) => Math.round(v * 10) / 10;
 const r4 = (v: number) => Number(v.toFixed(4));
 
-interface Timing {
-	startMs: number;
-	durationMs: number;
-	easing: Easing;
-	rmse: number;
-}
-
-interface Declared extends Timing {
-	animation: AnimationRecord;
-	deviation: CurveDeviation;
-}
-
-const confidenceOf = (rmse: number): SpecRow["confidence"] =>
-	rmse < 0.005 ? "high" : rmse < 0.02 ? "medium" : "low";
-
-// CSS transitions name their property, so an opacity transition cannot explain a transform and vice versa.
-function canDrive(a: AnimationRecord, property: string): boolean {
-	if (a.type !== "CSSTransition" || a.name === "all") return true;
-	return (a.name === "opacity") === (property === "opacity");
-}
-
-/** The tracked element's CSS or WAAPI animation that explains this motion, checked against the track. */
-function matchDeclared(
-	m: MovingProperty,
-	fit: FittedMotion,
-	animations: AnimationRecord[],
-	frameMs: number,
-	notes: string[],
-): Declared | null {
-	const startTol = Math.max(DEFAULT_TOLERANCES.startMs, frameMs);
-	let best: Declared | null = null;
-	for (const a of animations) {
-		if (
-			!a.tracked.some((t) => t.selector === m.selector && t.index === m.index)
-		)
-			continue;
-		if (a.canceled || a.timeline !== "document" || a.startMs === null) continue;
-		if (!canDrive(a, m.property)) continue;
-		const label = `${a.type} ${a.name || "(unnamed)"}`;
-		if (
-			a.iterations !== 1 ||
-			a.direction !== "normal" ||
-			a.playbackRate !== 1 ||
-			typeof a.duration !== "number"
-		) {
-			notes.push(
-				`${label} repeats, reverses or has no fixed duration: measured instead`,
-			);
-			continue;
-		}
-		const easing = declaredEasing(a);
-		if (!easing) {
-			notes.push(
-				`${label} easing "${a.easing}" is not one curve: measured instead`,
-			);
-			continue;
-		}
-		const startMs = a.startMs + a.delay;
-		if (Math.abs(startMs - fit.best.delayMs) > startTol) continue;
-		const deviation = curveDeviation(fit.samples, fit.hint, easing, {
-			delayMs: startMs,
-			spanMs: curveSpanMs(easing, a.duration),
-		});
-		if (deviation.max > DEFAULT_TOLERANCES.easing) {
-			notes.push(
-				`${label} does not match the track (max deviation ${deviation.max.toFixed(3)}): measured instead`,
-			);
-			continue;
-		}
-		if (!best || deviation.max < best.deviation.max)
-			best = {
-				startMs,
-				durationMs: a.duration,
-				easing,
-				rmse: deviation.rmse,
-				animation: a,
-				deviation,
-			};
-	}
-	return best;
-}
-
 function draftRow(
 	m: MovingProperty,
+	observed: Observed,
 	animations: AnimationRecord[],
 	cap: CaptureFile,
+	noise: number,
 ): SpecRow {
 	const fit = fitMotion(m);
 	const notes: string[] = [];
@@ -142,6 +63,14 @@ function draftRow(
 	else notes.push("measured from the track");
 	// Same free-timing deviation verify computes, so an identical clone always passes.
 	const residual = curveDeviation(fit.samples, fit.hint, easing).max;
+	const { confidence, support } = supportOf({
+		obs: observed.obs,
+		startMs: timing.startMs,
+		durationMs: timing.durationMs,
+		rmse: timing.rmse,
+		observed: 1,
+		noise,
+	});
 	return {
 		id: `${elementKey(m.selector, m.index)}.${m.property}`,
 		selector: m.selector,
@@ -149,19 +78,86 @@ function draftRow(
 		property: m.property,
 		from: r4(m.window.from),
 		to: r4(m.window.to),
+		fromObserved: true,
 		startMs: r1(timing.startMs),
 		durationMs: r1(timing.durationMs),
 		easing,
 		overshoot: r4(m.window.overshoot),
 		relativeDistance: m.window.relative === null ? null : r4(m.window.relative),
 		source: declared ? "declared" : "measured",
-		confidence: declared ? "high" : confidenceOf(timing.rmse),
+		confidence: declared ? "high" : confidence,
+		support,
 		rmse: Number(timing.rmse.toExponential(3)),
 		easingResidual: Math.ceil(residual * 1e4) / 1e4,
 		stagger: null,
 		tolerances: { ...DEFAULT_TOLERANCES },
 		notes,
 	};
+}
+
+function partialRow(
+	m: MovingProperty,
+	observed: Observed,
+	fit: PartialFit,
+	noise: number,
+): SpecRow {
+	const { confidence, support } = supportOf({
+		obs: observed.obs,
+		startMs: fit.startMs,
+		durationMs: fit.durationMs,
+		rmse: fit.rmse,
+		observed: fit.observed,
+		noise,
+		weak: fit.weak,
+	});
+	return {
+		id: `${elementKey(m.selector, m.index)}.${m.property}`,
+		selector: m.selector,
+		index: m.index,
+		property: m.property,
+		from: r4(fit.from),
+		to: r4(m.window.to),
+		fromObserved: false,
+		startMs: r1(fit.startMs),
+		durationMs: r1(fit.durationMs),
+		easing: fit.easing,
+		overshoot: r4(m.window.overshoot),
+		relativeDistance: null,
+		source: "measured",
+		confidence,
+		support,
+		rmse: Number(fit.rmse.toExponential(3)),
+		easingResidual: Math.ceil(fit.residual * 1e4) / 1e4,
+		stagger: null,
+		tolerances: { ...DEFAULT_TOLERANCES },
+		notes: fit.notes,
+	};
+}
+
+/** Rows for every motion; those whose start value the reference never shows are fitted from what it does show. */
+function draftRows(
+	motions: MovingProperty[],
+	track: Track,
+	animations: AnimationRecord[],
+	cap: CaptureFile,
+): SpecRow[] {
+	const model = observationModel(cap);
+	const items = motions.map((m) => ({
+		m,
+		observed: observe(track, m.selector, m.index, m.property, model),
+	}));
+	const partial = fitPartialRows(
+		items.filter((i) => !i.observed.fromObserved),
+		cap.frameMs,
+		model,
+	);
+	const noise = model?.noise ?? 0;
+	return items.map(({ m, observed }) => {
+		const fit = partial.get(m);
+		return fit
+			? partialRow(m, observed, fit, noise)
+			: draftRow(m, observed, animations, cap, noise);
+	});
 }
 
 function linkStagger(rows: SpecRow[]): void {
@@ -190,7 +186,7 @@ export async function draftSpec(
 		readAnimations(dir),
 	]);
 	const motions = motionProperties(track);
-	const rows = motions.map((m) => draftRow(m, animations, cap));
+	const rows = draftRows(motions, track, animations, cap);
 	linkStagger(rows);
 	const moving = new Set(motions.map((m) => elementKey(m.selector, m.index)));
 	const o = cap.options;

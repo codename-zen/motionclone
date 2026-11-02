@@ -65,6 +65,8 @@ export const SpecRow = z.object({
 	property: z.enum(PROPERTIES),
 	from: z.number(),
 	to: z.number(),
+	/** False when the reference never shows the start value: `from` is extrapolated and verify checks the clone against the visible readings. */
+	fromObserved: z.boolean().default(true),
 	/** Trigger-relative ms. */
 	startMs: z.number(),
 	durationMs: ms,
@@ -74,7 +76,23 @@ export const SpecRow = z.object({
 	/** Distance divided by the element size along the motion axis; null when the property has no axis. */
 	relativeDistance: z.number().nullable(),
 	source: z.enum(["declared", "measured"]),
+	/** From `support` (ADR 0003); verify reports "low" rows as advisory, never as failures. */
 	confidence: z.enum(["high", "medium", "low"]),
+	/** The evidence behind `confidence`; null in spec files drafted before it existed. */
+	support: z
+		.object({
+			/** Plain readings inside the motion, without bounds or low-quality frames. */
+			samples: z.number().int().nonnegative(),
+			rmse: z.number().nonnegative(),
+			/** Share of the change the reference shows, 0..1. */
+			observed: z.number().min(0).max(1),
+			/** Mean tracker match quality inside the motion, when the tracker reports one. */
+			quality: z.number().min(0).max(1).nullable(),
+			/** Why the evidence is weak, one reason per failed check. */
+			weak: z.array(z.string()),
+		})
+		.nullable()
+		.default(null),
 	/** Fit error of the spec curve against the reference track, in progress units. */
 	rmse: z.number().nonnegative(),
 	/** Largest deviation of the reference itself from `easing` (timing fitted freely); verify allows this on top of the easing tolerance. */

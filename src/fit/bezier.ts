@@ -1,4 +1,5 @@
 import { nelderMead } from "./optimize.ts";
+import { excursion, goesPast, sanitizeBezier } from "./plausible.ts";
 import { type BezierParams, PRESETS, type Preset } from "./presets.ts";
 import type { Hint, Sample } from "./types.ts";
 
@@ -108,13 +109,6 @@ export function fitTiming(
 	return best;
 }
 
-const sanitize = (x: readonly number[]): BezierParams => [
-	clamp(x[0] as number, 0, 1),
-	clamp(x[1] as number, -2, 3),
-	clamp(x[2] as number, 0, 1),
-	clamp(x[3] as number, -2, 3),
-];
-
 const curveOf = (p: BezierParams) => (u: number) => bezierY(p, u);
 
 export function fitPreset(
@@ -129,8 +123,10 @@ export function fitPreset(
 	};
 }
 
-/** Least-squares cubic-bezier (x1,x2 clamped to [0,1]) with delay and duration fitted jointly. */
+/** Least-squares cubic-bezier with delay and duration fitted jointly; control points as `sanitizeBezier` allows. */
 export function fitBezier(samples: readonly Sample[], hint: Hint): BezierFit {
+	const past = goesPast(excursion(samples));
+	const sanitize = (x: readonly number[]) => sanitizeBezier(x, past);
 	const presetFits = PRESETS.map((pr) => ({
 		pr,
 		fit: fitPreset(samples, hint, pr),

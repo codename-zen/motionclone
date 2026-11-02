@@ -19,6 +19,7 @@ import {
 	type SpecRow,
 } from "../src/spec/schema.ts";
 import {
+	BLUR,
 	type CaptureSession,
 	FADE,
 	GSAP,
@@ -146,6 +147,26 @@ describe("draftSpec on reference captures", () => {
 			JSON.parse(await readFile(join(dir, "spec.json"), "utf8")),
 		);
 		expect(written).toEqual(spec);
+	});
+
+	it("css-blur-scale-in: declared opacity, scale and blur rows per card", async () => {
+		const dir = await session.capture("css-blur-scale-in", "blur", BLUR);
+		const spec = await draftSpec(dir);
+		const answer = await answerOf("css-blur-scale-in");
+		expect(spec.rows.map((r) => r.id).sort()).toEqual(
+			answer.rows.map((k) => `.card[${k.index}].${k.property}`).sort(),
+		);
+		for (const row of spec.rows) {
+			expect(row.source).toBe("declared");
+			const key = keyFor(answer, row);
+			expectMatches(row, key, key.startMs, spec.meta.frameMs);
+			expect(row.startMs).toBe(150 + 100 * row.index);
+			expect(row.durationMs).toBe(600);
+			expect(row.from).toBeCloseTo(Number(key.from), 3);
+			expect(row.to).toBeCloseTo(Number(key.to), 3);
+			if (row.index > 0) expect(row.stagger?.gapMs).toBe(100);
+		}
+		expect(spec.still.map((s) => s.id)).toEqual(["h1[0]"]);
 	});
 
 	it("gsap-timeline: measured rows match the key, shifted by FIRST_FRAME_MS", async () => {

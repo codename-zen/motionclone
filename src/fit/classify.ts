@@ -1,6 +1,12 @@
 import type { Series } from "../measure/series.ts";
 import type { MotionWindow } from "../measure/window.ts";
 import { bezierY, fitBezier, fitPreset, fitTiming } from "./bezier.ts";
+import {
+	excursion,
+	MIN_FRAMES,
+	OVERSHOOT_MIN,
+	plausibleBezier,
+} from "./plausible.ts";
 import type { BezierParams } from "./presets.ts";
 import { PRESETS } from "./presets.ts";
 import { dampingRatio, fitSpring, type Spring } from "./spring.ts";
@@ -32,7 +38,7 @@ export interface Classification {
 }
 
 export const SIMPLER_WITHIN = 0.005;
-export const OVERSHOOT_MIN = 0.02;
+export { OVERSHOOT_MIN };
 
 /** Window samples as progress 0..1, from just before the start to well past the visible end. */
 export function normalise(
@@ -57,6 +63,24 @@ const maxY = (p: BezierParams) => {
 	return m;
 };
 
+/** Steps and linear always fit; curves need two frames and may not overshoot more than the samples do. */
+function plausible(
+	c: Candidate,
+	seen: ReturnType<typeof excursion>,
+	frameMs: number,
+): boolean {
+	if (c.kind === "linear" || c.kind === "steps") return true;
+	if (c.durationMs < MIN_FRAMES * frameMs) return false;
+	if (c.kind === "spring") {
+		const over =
+			c.zeta < 1
+				? Math.exp((-Math.PI * c.zeta) / Math.sqrt(1 - c.zeta ** 2))
+				: 0;
+		return over <= seen.over + OVERSHOOT_MIN;
+	}
+	return plausibleBezier(c.p, seen, OVERSHOOT_MIN);
+}
+
 // Lower is simpler; a spring that must explain overshoot beats a free bezier.
 const complexity = (c: Candidate, overshooting: boolean): number => {
 	switch (c.kind) {
@@ -79,6 +103,7 @@ export function classifyMotion(
 ): Classification {
 	const { samples, hint } = normalise(series, window);
 	const overshoot = Math.max(0, ...samples.map((s) => s[1] - 1));
+	const seen = excursion(samples);
 	const candidates: Candidate[] = [];
 
 	const lin = fitTiming(samples, hint, (u) => u);
@@ -91,6 +116,7 @@ export function classifyMotion(
 	);
 	let nearestP = (PRESETS[0] as (typeof PRESETS)[number]).p;
 	for (const pr of PRESETS.slice(1)) {
+		if (!plausibleBezier(pr.p, seen, OVERSHOOT_MIN)) continue;
 		const f = fitPreset(samples, hint, pr);
 		if (f.rmse < nearest.rmse) {
 			nearest = f;
@@ -149,11 +175,10 @@ export function classifyMotion(
 		});
 
 	candidates.sort((a, b) => a.rmse - b.rmse);
+	const sane = candidates.filter((c) => plausible(c, seen, hint.frameMs));
 	const needsOvershoot = overshoot > OVERSHOOT_MIN;
-	const eligible = needsOvershoot
-		? candidates.filter((c) => c.overshoots)
-		: candidates;
-	const pool = eligible.length > 0 ? eligible : candidates;
+	const eligible = needsOvershoot ? sane.filter((c) => c.overshoots) : sane;
+	const pool = eligible.length > 0 ? eligible : sane;
 	const floor = (pool[0] as Candidate).rmse + SIMPLER_WITHIN;
 	const best = pool
 		.filter((c) => c.rmse <= floor)

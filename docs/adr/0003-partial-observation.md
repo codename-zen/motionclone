@@ -53,7 +53,9 @@ It places the clone's own values at the reference's end value, on the same clock
 It measures the spec curve the same way.
 The row passes this `evidence` check when the clone is at most 0.04 further than the spec curve.
 Because the times are absolute, the check covers start, stagger, duration, easing and the distance the reference shows.
-The start is still compared with the spec start at the usual tolerance.
+The start is still compared with the spec start at the usual tolerance, when the drafted start lies inside the readings.
+When the drafted start lies before the first reading that bounds the value, the reference never shows it: the fit places it from the curve shape alone, and on a real recording it moved by 84 ms between two fits of the same readings.
+Such a start is an upper bound only: the clone must have started by the first reading, plus the usual tolerance; whether its shape after that matches is the evidence check above.
 Duration, end, stagger, easing and distance are not compared with the spec numbers, because the reference does not fix them; the verdict row carries a note that says so, and the report lists these rows under "Partly observed".
 Overshoot and direction are checked as usual.
 

@@ -4,6 +4,7 @@ import {
 	type Evidence,
 	evidenceMessage,
 	evidenceMetric,
+	firstSeenMs,
 	PARTIAL_NOTE,
 } from "./evidence.ts";
 import {
@@ -36,6 +37,29 @@ export function startMetric(row: SpecRow, c: Moving, frameMs: number): Metric {
 		frameTol(row.tolerances.startMs, frameMs),
 		"ms",
 	);
+}
+
+// A start the reference never shows (drafted before its first reading) is only an upper bound: the clone must have
+// started by the first reading; the shape after that is the evidence check's job.
+function unseenStartMetric(
+	row: SpecRow,
+	c: Moving,
+	frameMs: number,
+	evidence: Evidence,
+): Metric {
+	const seen = firstSeenMs(evidence);
+	const tol = frameTol(row.tolerances.startMs, frameMs);
+	if (seen === null || row.startMs >= seen - frameMs)
+		return startMetric(row, c, frameMs);
+	const late = c.startMs - seen;
+	return {
+		want: row.startMs,
+		got: c.startMs,
+		diff: c.startMs - row.startMs,
+		tol,
+		unit: "ms",
+		pass: late <= tol,
+	};
 }
 
 function verdictOf(
@@ -101,13 +125,15 @@ export function checkMotionRow(
 	const failures: string[] = [];
 	const focus: number[] = [];
 
-	const start = startMetric(row, c, frameMs);
+	const partial = !row.fromObserved && evidence !== null;
+	const start = partial
+		? unseenStartMetric(row, c, frameMs, evidence)
+		: startMetric(row, c, frameMs);
 	metrics.start = start;
 	if (!start.pass) {
 		failures.push(timingMessage(row, "start", start));
 		focus.push(...startFocus(row, c));
 	}
-	const partial = !row.fromObserved && evidence !== null;
 	if (partial) {
 		const m = evidenceMetric(row, c, evidence);
 		metrics.evidence = m;

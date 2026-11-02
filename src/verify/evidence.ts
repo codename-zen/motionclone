@@ -63,6 +63,12 @@ export function evidenceMetric(row: SpecRow, c: Moving, ev: Evidence): Metric {
 	};
 }
 
+/** Time of the first reading that bounds the value on both sides; earlier the reference shows nothing of this row. */
+export function firstSeenMs(ev: Evidence): number | null {
+	const o = ev.obs.find((x) => Number.isFinite(x.lo) && Number.isFinite(x.hi));
+	return o ? o.t : null;
+}
+
 const num = (v: number) => Number(v.toFixed(3));
 
 export const evidenceMessage = (row: SpecRow, m: Metric) =>

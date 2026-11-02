@@ -41,7 +41,9 @@ Rows of one element share delay, duration and easing, because CSS and animation 
 Tracks whose frames before the motion carry bounds (an opacity that reads 0) set that shared timing; tracks with no readings there (scale and blur while faint) follow it, because with a free start value they fit almost any curve.
 A follower that the shared timing leaves more than 0.03 rms worse than a fit of its own gets its own fit, with a note.
 Indexed siblings of one selector with the same partial properties (staggered cards) then get one fit with a delay each, kept when it leaves no track more than 0.03 rms worse than its per-element fit.
-Named curves are tried first; a free cubic-bezier replaces the best named one only when it is closer by 0.005 plus the reading noise (0.03 for video), because noise alone lets a free curve bend towards it.
+When more than one track sets the timing, they are weighted by joint evidence: every named curve is first fitted with equal weights, each track's weight becomes one over the square of the best rms any named curve reaches on it (at least 0.005), and the four named curves that score best under those weights are fitted again with them.
+So a precise track (a box position) pins the curve and timing that a noisy one (the opacity proxy) cannot tell apart, and the choice does not hang on which track the encoder happened to blur.
+Named curves are tried first; a free cubic-bezier replaces the best named one only when its rms, with the tracks' own weights, is closer by 0.005 plus the reading noise (0.03 for video), because noise alone lets a free curve bend towards it.
 The row's notes say the start value is extrapolated, from which time the readings start, and which rows share the timing.
 
 ## Decision: verifying partly observed rows
@@ -99,6 +101,12 @@ The evidence gap over the spec curve is 0.001 to 0.014 for a DOM clone of the sa
 Wrong clones are at least 0.10 worse on the rows they change: `ease-in` 0.49, `linear` 0.35, `ease-out` 0.23, 300 ms instead of 600 ms 0.10, `blur(4px)` 0.12 on blur rows, `scale: 0.8` 0.28 on scale rows, a 150 ms stagger 0.11 on the later cards.
 A clone that only fades fails the scale and blur rows of every card, because they do not move at all.
 
+The same libx264 settings give slightly different pixels on Linux and Windows, so these numbers hold for Windows; on Linux the same fixture drafts `easeOutQuint`, 565 ms, starting at 173.3, 255.9 and 364.8 ms, and every check still passes.
+
+On the fade-up stagger video (ADR 0002) each card's opacity and box y both set the timing, and their best named curves are close: on card 2 of the Linux encode, `easeOutQuint` 610 ms and `easeOutExpo` 702 ms differed by 0.3 % of the equally weighted loss.
+The opacity proxy (best rms 0.011 to 0.021 of the change) favoured `easeOutQuint` slightly and the box y (0.004 to 0.006) favoured `easeOutExpo` clearly, so equal weights let the encoder pick: card 2 drafted `easeOutQuint`, 280.5 ms, 610 ms (page `easeOutExpo`, 290 ms, 700 ms) on Linux and `easeOutExpo` on Windows.
+With joint evidence `easeOutExpo` scores 1.5 to 2.1 on every card of both encodes, against 2.9 or more for the next named curve.
+
 ## Alternatives
 
 - Keeping one fit per row with low-visibility frames dropped: scale and blur, with their start unseen, fitted in-out curves with negative delays.
@@ -120,5 +128,5 @@ A DOM clone of the page passes; a clone without blur and scale fails those rows,
 ## Consequences
 
 - `SpecRow` has `fromObserved` (default true) and `support` (default null); `RowVerdict` has `notes` (default empty) and `advisory` (default null); the verdict summary has `advisory` (default 0); older spec and verdict files still parse, and an older spec's low rows are advisory with a reason that says no evidence was recorded.
-- On the fade-up stagger video (ADR 0002), the opacity rows are partly observed, because opacity reads 0 before each card appears; with the tracker's `observed` fields the y rows are partly observed too, share the opacity timing and land within 5 ms of the declared starts and 5 ms of the 700 ms duration, and every existing video check still passes.
+- On the fade-up stagger video (ADR 0002), the opacity rows are partly observed, because opacity reads 0 before each card appears; with the tracker's `observed` fields the y rows are partly observed too, share the opacity timing and land on `easeOutExpo` within 5 ms of the declared starts and 16 ms of the 700 ms duration on Linux and Windows, and every existing video check still passes.
 - A relative distance is measured against the element's unscaled size, so a rebuild that leaves out a scale no longer fails the translate row of the same element.

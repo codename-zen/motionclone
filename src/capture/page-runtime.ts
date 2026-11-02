@@ -4,6 +4,7 @@ export interface PageRuntime {
 	step(tMs: number): void;
 	tagCdp(animation: Animation, cdpId: string): void;
 	matchTracked(selectors: string[]): void;
+	trackedPaths(selectors: string[], max: number): Record<string, string[]>;
 	records: PageAnimationRecord[];
 	contexts: string[];
 }
@@ -86,6 +87,20 @@ export function installPageRuntime(seed: number): void {
 					: "WebAnimation",
 			name,
 			target: describe(effect?.target ?? null, effect?.pseudoElement ?? null),
+			properties: [
+				...new Set(
+					(effect?.getKeyframes() ?? []).flatMap((k) =>
+						Object.keys(k)
+							.filter(
+								(p) =>
+									!["offset", "easing", "composite", "computedOffset"].includes(
+										p,
+									),
+							)
+							.map((p) => p.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)),
+					),
+				),
+			].sort(),
 			startMs: stepT === null ? 0 : stepT + (bornPerf - stepPerf),
 			duration: (timing.duration as number | string | undefined) ?? 0,
 			delay: timing.delay ?? 0,
@@ -272,6 +287,15 @@ export function installPageRuntime(seed: number): void {
 				});
 			}
 		},
+		trackedPaths: (selectors, max) =>
+			Object.fromEntries(
+				selectors.map((selector) => [
+					selector,
+					Array.from(document.querySelectorAll(selector))
+						.slice(0, max)
+						.map(nodePath),
+				]),
+			),
 		records,
 		contexts,
 	};

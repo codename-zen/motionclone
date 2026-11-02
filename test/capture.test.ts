@@ -11,6 +11,8 @@ import {
 	type TrackFrame,
 	toUrl,
 } from "../src/capture/index.ts";
+import { draftSpec } from "../src/spec/draft.ts";
+import { verify } from "../src/verify/index.ts";
 import { type StaticServer, serveRepo } from "./serve.ts";
 
 let server: StaticServer;
@@ -194,6 +196,59 @@ describe("captureMotion first frame", () => {
 		const hashes = await frameHashes(summary.outDir);
 		expect(hashes[0]).not.toBe(hashes.at(-1));
 	});
+});
+
+describe("captureMotion scroll trigger", () => {
+	// Scroll timelines lag scrollY until a rendering update, which runs in real time; a sample taken
+	// before it read the previous step's values in some runs only.
+	it("is deterministic and samples scroll timelines at the current position", async () => {
+		const runs: string[] = [];
+		for (let i = 0; i < 5; i++) {
+			const s = await captureMotion({
+				url: `${server.url}/fixtures/scroll-linked/index.html`,
+				outDir: join(root, `scroll-${i}`),
+				trigger: { type: "scroll", toPx: 1200 },
+				track: [".progress", ".reveal"],
+				durationMs: 350,
+				fps: 60,
+			});
+			runs.push(s.outDir);
+		}
+		const [ref = "", ...rest] = runs;
+		const { frames } = await readJson<{ frames: TrackFrame[] }>(
+			ref,
+			"track.json",
+		);
+		expect(frames.at(-1)?.scrollY).toBe(1200);
+		for (const f of frames) {
+			const scaleX = Number(
+				/matrix\(([^,]+)/.exec(
+					f.elements[".progress"]?.[0]?.transform ?? "",
+				)?.[1],
+			);
+			expect(scaleX).toBeCloseTo(f.scrollY / 1200, 4);
+			const reveal = Math.min(1, Math.max(0, (f.scrollY - 200) / 400));
+			expect(f.elements[".reveal"]?.[0]?.opacity).toBeCloseTo(reveal, 4);
+		}
+
+		const spec = await draftSpec(ref, { write: false });
+		const refHashes = await frameHashes(ref);
+		const refTrack = await readFile(join(ref, "track.json"), "utf8");
+		const refAnimations = await readFile(join(ref, "animations.json"), "utf8");
+		for (const dir of rest) {
+			expect(await frameHashes(dir)).toEqual(refHashes);
+			expect(await readFile(join(dir, "track.json"), "utf8")).toBe(refTrack);
+			expect(await readFile(join(dir, "animations.json"), "utf8")).toBe(
+				refAnimations,
+			);
+			const v = await verify(spec, ref, dir, {
+				fidelity: "pixel",
+				outDir: false,
+			});
+			expect(v.rows.filter((r) => !r.pass).map((r) => r.id)).toEqual([]);
+			expect(v.pass).toBe(true);
+		}
+	}, 120_000);
 });
 
 describe("toUrl", () => {

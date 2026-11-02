@@ -11,6 +11,7 @@ export const SPRING = {
 	track: [".box"],
 	trigger: { type: "click", target: ".go" },
 } satisfies Partial<CaptureInput>;
+export const BLUR = { durationMs: 1200, fps: 30, track: [".card", "h1"] };
 export const GSAP = { durationMs: 1300, fps: 60, track: [".item"] };
 
 export interface CaptureSession {

@@ -27,6 +27,8 @@ export interface PageAnimationRecord extends TimingInfo {
 	type: AnimationType;
 	name: string;
 	target: string;
+	/** CSS properties the keyframes animate, kebab-case. */
+	properties: string[];
 	startMs: number;
 	timeline: string;
 	playbackRate: number;
@@ -39,7 +41,6 @@ export interface CdpAnimation extends TimingInfo {
 	cdpId: string;
 	type: AnimationType;
 	name: string;
-	backendNodeId: number | null;
 	target: string;
 	playbackRate: number;
 	timeline: string;
@@ -51,6 +52,8 @@ export interface AnimationRecord extends TimingInfo {
 	type: AnimationType;
 	name: string;
 	target: string;
+	/** CSS properties the keyframes animate, kebab-case; absent in older captures. */
+	properties?: string[];
 	/** Unique nth-child path from <html>; null when only CDP saw the animation. */
 	nodePath: string | null;
 	/** Tracked selectors this target matches, with its index in track.json. */
@@ -60,7 +63,7 @@ export interface AnimationRecord extends TimingInfo {
 	playbackRate: number;
 	canceled: boolean;
 	sources: ("cdp" | "page")[];
-	cdp: { id: string; backendNodeId: number | null; events: string[] } | null;
+	cdp: { id: string; events: string[] } | null;
 }
 
 export interface TrackedElement {
@@ -71,11 +74,28 @@ export interface TrackedElement {
 	h: number;
 	opacity: number;
 	transform: string;
+	/** Individual transform properties, applied before `transform`; absent in video tracks. */
+	translate?: string;
+	rotate?: string;
+	scale?: string;
 	filter: string;
 	clipPath: string;
 	color: string;
 	backgroundColor: string;
 	boxShadow: string;
+	/** Video tracks only: match quality, 0..1. Page captures are exact and omit it. */
+	quality?: number;
+	/** Video tracks only: which values were measured on this frame; the others are filled in. */
+	observed?: ObservedValues;
+}
+
+export interface ObservedValues {
+	/** Box x and y. */
+	position: boolean;
+	/** Transform scale and box size. */
+	scale: boolean;
+	blur: boolean;
+	opacity: boolean;
 }
 
 export interface TrackFrame {

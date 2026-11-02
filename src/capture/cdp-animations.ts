@@ -90,7 +90,6 @@ export async function startCdpRecorder(cdp: CDPSession): Promise<CdpRecorder> {
 			cdpId: a.id,
 			type: a.type,
 			name: a.name,
-			backendNodeId: src?.backendNodeId ?? null,
 			target: known?.target ?? "(unresolved)",
 			playbackRate: a.playbackRate,
 			timeline: timelineOf(a),

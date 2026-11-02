@@ -44,6 +44,8 @@ export const CaptureOptions = z.object({
 	// Optional so load captures can tell an explicit value (warned, ignored) from the default.
 	preRollMs: z.number().nonnegative().optional(),
 	waitBeforeMs: z.number().nonnegative().optional(),
+	preJs: z.string().min(1).optional(),
+	preClick: z.array(z.string().min(1)).default([]),
 	durationMs: z.number().positive(),
 	fps: z.number().positive().max(240).default(60),
 	track: z.array(z.string().min(1)).default([]),

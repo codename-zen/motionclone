@@ -20,6 +20,42 @@ async function center(
 		: { x: box.x + box.width / 2, y: box.y + box.height / 2 };
 }
 
+const RENDER_TIMEOUT_MS = 5000;
+
+// Scroll timelines and scroll events catch up only at the next rendering update, which runs in real time.
+// "instant" overrides CSS smooth scrolling, which would also animate in real time.
+async function scrollAndRender(page: Page, y: number): Promise<void> {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const rendered = page.evaluate(
+		(yy) =>
+			new Promise<void>((done) => {
+				window.scrollTo({ top: yy, left: 0, behavior: "instant" });
+				// The first observation is delivered after the next rendering update.
+				new IntersectionObserver((_, o) => {
+					o.disconnect();
+					done();
+				}).observe(document.documentElement);
+			}),
+		y,
+	);
+	const timeout = new Promise<never>((_, fail) => {
+		timer = setTimeout(
+			() =>
+				fail(
+					new Error(
+						`page rendered no frame within ${RENDER_TIMEOUT_MS} ms after scrolling to ${y}px; is the tab hidden?`,
+					),
+				),
+			RENDER_TIMEOUT_MS,
+		);
+	});
+	try {
+		await Promise.race([rendered, timeout]);
+	} finally {
+		clearTimeout(timer);
+	}
+}
+
 // Runs before the wait so a "leave" starts from a settled hover state.
 export async function prepareTrigger(
 	page: Page,
@@ -71,7 +107,7 @@ export async function planTrigger(
 				const y = Math.round(from + (to - from) * k);
 				return {
 					atMs: trigger.ms * (i / Math.max(1, trigger.steps - 1)),
-					run: () => page.evaluate((yy) => window.scrollTo(0, yy), y),
+					run: () => scrollAndRender(page, y),
 				};
 			});
 		}

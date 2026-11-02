@@ -14,6 +14,7 @@ import {
 } from "./options.ts";
 import { installRafFlush } from "./page-raf.ts";
 import { installPageRuntime, type PageRuntime } from "./page-runtime.ts";
+import { preSettleMs, runPreActions } from "./pre-actions.ts";
 import { detectStack } from "./stack.ts";
 import { MAX_MATCHES_PER_SELECTOR, sampleTrack } from "./tracker.ts";
 import { planTrigger, prepareTrigger, type TriggerAction } from "./triggers.ts";
@@ -53,6 +54,10 @@ function planTimeline(opts: CaptureOptions, warnings: string[]): Timeline {
 			"waitBeforeMs ignored for the load trigger: t=0 is the first frame after load",
 		);
 	const preRollMs = isLoad ? 0 : (opts.preRollMs ?? DEFAULT_PRE_ROLL_MS);
+	if (isLoad && (opts.preJs || opts.preClick.length > 0))
+		warnings.push(
+			"pre actions with the load trigger run after the page's load animations have started; t=0 moves to after them",
+		);
 	const waitBeforeMs = isLoad
 		? 0
 		: (opts.waitBeforeMs ?? DEFAULT_WAIT_BEFORE_MS);
@@ -72,7 +77,8 @@ function planTimeline(opts: CaptureOptions, warnings: string[]): Timeline {
 		preFrames,
 		frames,
 		waitBeforeMs,
-		triggerAtMs: FIRST_FRAME_MS + waitBeforeMs - timeAt(-preFrames),
+		triggerAtMs:
+			FIRST_FRAME_MS + waitBeforeMs + preSettleMs(opts) - timeAt(-preFrames),
 		timeAt,
 	};
 }
@@ -106,6 +112,16 @@ export async function captureMotion(
 		const firstFrameAt = FIRST_FRAME_MS + tl.waitBeforeMs;
 		for (let v = FIRST_FRAME_MS; v < firstFrameAt; v += stepMs)
 			await clock.advanceTo(v, v - tl.triggerAtMs);
+		if (preSettleMs(opts) > 0)
+			await clock.advanceTo(firstFrameAt, firstFrameAt - tl.triggerAtMs);
+		await runPreActions(
+			page,
+			clock,
+			opts,
+			stepMs,
+			(v) => v - tl.triggerAtMs,
+			warnings,
+		);
 
 		// Fixed once, before the first recorded frame: the pre-roll is idle by design, so this equals the trigger-time box.
 		const crop = await resolveCrop(page, opts.clip, opts.viewport, warnings);
@@ -149,12 +165,18 @@ export async function captureMotion(
 			);
 
 		const cdp = await recorder.finish();
-		const pageRecords = await page.evaluate((selectors) => {
-			const rt = (window as unknown as { __motionclone: PageRuntime })
-				.__motionclone;
-			rt.matchTracked(selectors);
-			return rt.records;
-		}, opts.track);
+		const { records: pageRecords, paths } = await page.evaluate(
+			({ selectors, max }) => {
+				const rt = (window as unknown as { __motionclone: PageRuntime })
+					.__motionclone;
+				rt.matchTracked(selectors);
+				return {
+					records: rt.records,
+					paths: rt.trackedPaths(selectors, max),
+				};
+			},
+			{ selectors: opts.track, max: MAX_MATCHES_PER_SELECTOR },
+		);
 		const animations = mergeAnimations(cdp.animations, pageRecords);
 		const stack = await detectStack(page, animations);
 		const versions = {
@@ -173,7 +195,11 @@ export async function captureMotion(
 		);
 		await writeFile(
 			join(outDir, "animations.json"),
-			json({ animations, cdpCreatedWithoutStart: cdp.createdOnly }),
+			json({
+				animations,
+				cdpCreatedWithoutStart: cdp.createdOnly,
+				trackedPaths: paths,
+			}),
 		);
 		const summary: CaptureSummary = {
 			outDir,

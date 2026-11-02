@@ -33,13 +33,17 @@ For the load trigger that first frame is t=0; animations created during load sta
 JavaScript timelines (GSAP, Motion, timers) count from the moment their script ran, so a delay declared there shows up 16 ms earlier relative to t=0; this is real browser behaviour and cancels out when reference and rebuild are captured the same way.
 
 Each frame is: `runFor` to the frame time, run due trigger actions, advance animations and flush rAF, sample the tracker, take a lossless PNG screenshot.
+Each scroll step sets the position with `window.scrollTo({ behavior: "instant" })`, so CSS smooth scrolling never animates on the compositor in real time.
+`scrollY` changes at once, but scroll timelines and scroll events only catch up at the next rendering update, which Chromium schedules in real time.
+Without a wait, the tracker sometimes read the previous step's scroll-driven values, so track.json and self-verify differed between runs.
+The step therefore waits for one rendering update (the first callback of an IntersectionObserver, delivered after it) before the frame is sampled.
 Frame times are whole milliseconds (`round(k * 1000 / fps)`) so timers fire at the same points every run.
 `Math.random` is replaced with a seeded mulberry32.
 
 ## What Playwright's clock does not cover
 
 - The document timeline: CSS animations, CSS transitions and WAAPI (handled above).
-- Scroll-driven and view timelines: they follow scroll position, which only triggers change, so they are deterministic without help and are not seeked.
+- Scroll-driven and view timelines: they follow scroll position, which only triggers change, so they are not seeked.
 - Compositor-only work outside animations, such as smooth scrolling, video, and canvas or WebGL frames drawn from real time sources (`requestVideoFrameCallback`, media clocks); these are not made deterministic.
 - Network timing: resources that arrive at different moments can still change what is painted; local fixtures avoid this.
 - Workers and iframes from other origins keep their own clocks.
@@ -48,5 +52,6 @@ Frame times are whole milliseconds (`round(k * 1000 / fps)`) so timers fire at t
 
 - Captures of every M0 fixture (CSS, WAAPI, GSAP, Motion, scroll-driven) are byte-identical across runs on the same machine.
 - The capture is not real time; wall time is dominated by screenshots (a 1 s, 30 fps capture of a small page takes under a second here).
+- animations.json leaves out CDP `backendNodeId`: it is a per-session counter that differed between otherwise identical runs.
 - CDP `startTime` values are meaningless under a frozen timeline, so records carry `startMs`, the virtual creation time relative to the trigger.
 - Pages that compare `document.timeline.currentTime` with an animation's raw internal start time outside the patched getters could still see inconsistent values.

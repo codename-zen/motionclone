@@ -17,6 +17,7 @@ function fromCdp(
 		type: c.type,
 		name: c.name,
 		target: c.target,
+		properties: page?.properties ?? [],
 		nodePath: page?.nodePath ?? null,
 		tracked: page?.tracked ?? [],
 		startMs: page?.startMs ?? null,
@@ -24,7 +25,7 @@ function fromCdp(
 		playbackRate: c.playbackRate,
 		canceled: c.canceled,
 		sources: page ? ["cdp", "page"] : ["cdp"],
-		cdp: { id: c.cdpId, backendNodeId: c.backendNodeId, events: c.events },
+		cdp: { id: c.cdpId, events: c.events },
 		// Scroll-driven durations are percentages over CDP; the page reports "auto", which is the honest value.
 		duration: c.timeline !== "document" && page ? page.duration : c.duration,
 		delay: c.delay,

@@ -6,6 +6,7 @@ import { readTrack, type Track } from "../measure/elements.ts";
 import { readCaptureFile } from "../spec/capture-file.ts";
 import { readPng } from "../verify/pixels.ts";
 import type { RowVerdict, Verdict } from "../verify/schema.ts";
+import { drawText, GLYPH_HEIGHT, textWidth, wrapText } from "./font.ts";
 
 interface Rect {
 	x: number;
@@ -29,6 +30,8 @@ export interface SheetInfo {
 	png: string;
 	/** Region of the captured frames each tile shows, in frame pixels. */
 	crop: Rect;
+	/** Height of the text block above the first row: id, message and column titles. */
+	headerHeight: number;
 	tileWidth: number;
 	tileHeight: number;
 	tiles: SheetTile[];
@@ -37,7 +40,13 @@ export interface SheetInfo {
 const GUTTER = 8;
 const PAD = 24;
 const MAX_TIMES = 3;
+const MAX_MESSAGE_LINES = 4;
+const TEXT_SCALE = 2;
+const LINE_HEIGHT = GLYPH_HEIGHT * TEXT_SCALE + 6;
 const BACKGROUND = [40, 40, 40, 255];
+const INK = [240, 240, 240] as const;
+const MUTED = [170, 170, 170] as const;
+const COLUMN_TITLES = ["Reference", "Clone", "Difference"] as const;
 
 const slug = (id: string) =>
 	id
@@ -93,7 +102,22 @@ function crop(src: PNG, r: Rect): PNG {
 	return out;
 }
 
-/** One PNG per failing row: a line per moment with reference | clone | diff tiles. */
+/** Id and failing message wrapped to the sheet width; the message is cut with "..." past the line limit. */
+function headerLines(row: RowVerdict, width: number): string[] {
+	const chars = Math.max(
+		8,
+		Math.floor((width - 2 * GUTTER) / textWidth("a", TEXT_SCALE)),
+	);
+	const message = wrapText(row.message, chars);
+	if (message.length > MAX_MESSAGE_LINES) {
+		message.length = MAX_MESSAGE_LINES;
+		const last = message[MAX_MESSAGE_LINES - 1] as string;
+		message[MAX_MESSAGE_LINES - 1] = `${last.slice(0, chars - 3)}...`;
+	}
+	return [row.id.slice(0, chars), ...message];
+}
+
+/** One PNG per failing row: a labelled line per moment with reference | clone | diff tiles. */
 async function writeSheet(
 	row: RowVerdict,
 	v: Verdict,
@@ -121,11 +145,37 @@ async function writeSheet(
 			height: Math.min(refFirst.height, cloneFirst.height),
 		},
 	);
+	const width = 3 * area.width + 4 * GUTTER;
+	const head = headerLines(row, width);
+	const headerHeight = GUTTER + (head.length + 1) * LINE_HEIGHT + GUTTER;
+	const rowHeight = LINE_HEIGHT + area.height + GUTTER;
 	const sheet = new PNG({
-		width: 3 * area.width + 4 * GUTTER,
-		height: frames.length * (area.height + GUTTER) + GUTTER,
+		width,
+		height: headerHeight + frames.length * rowHeight,
 	});
 	for (let i = 0; i < sheet.data.length; i += 4) sheet.data.set(BACKGROUND, i);
+	for (const [i, line] of head.entries())
+		drawText(
+			sheet,
+			line,
+			GUTTER,
+			GUTTER + i * LINE_HEIGHT,
+			i === 0 ? INK : MUTED,
+			TEXT_SCALE,
+		);
+	const titleY = GUTTER + head.length * LINE_HEIGHT;
+	for (const [col, title] of COLUMN_TITLES.entries()) {
+		// Narrow tiles get a half-size title so the three never overlap.
+		const scale = textWidth(title, TEXT_SCALE) <= area.width ? TEXT_SCALE : 1;
+		drawText(
+			sheet,
+			title,
+			GUTTER + col * (area.width + GUTTER),
+			titleY,
+			INK,
+			scale,
+		);
+	}
 	const tiles: SheetTile[] = [];
 	for (const [line, frame] of frames.entries()) {
 		const a = crop(await readPng(v.referenceDir, frame), area);
@@ -134,8 +184,10 @@ async function writeSheet(
 		pixelmatch(a.data, b.data, diff.data, area.width, area.height, {
 			threshold: 0.1,
 		});
-		const y = GUTTER + line * (area.height + GUTTER);
+		const rowY = headerHeight + line * rowHeight;
+		const y = rowY + LINE_HEIGHT;
 		const t = tracks.ref.frames[frame]?.t ?? 0;
+		drawText(sheet, `${Math.round(t)} ms`, GUTTER, rowY, INK, TEXT_SCALE);
 		for (const [col, [kind, img]] of (
 			[
 				["reference", a],
@@ -155,6 +207,7 @@ async function writeSheet(
 		message: row.message,
 		png,
 		crop: area,
+		headerHeight,
 		tileWidth: area.width,
 		tileHeight: area.height,
 		tiles,
@@ -166,7 +219,7 @@ export async function writeSheets(
 	v: Verdict,
 	outDir: string,
 ): Promise<SheetInfo[]> {
-	const failing = v.rows.filter((r) => !r.pass);
+	const failing = v.rows.filter((r) => !r.pass && r.advisory === null);
 	if (v.setupErrors.length > 0 || failing.length === 0) return [];
 	await mkdir(outDir, { recursive: true });
 	const [ref, clone, refCap, cloneCap] = await Promise.all([

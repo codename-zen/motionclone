@@ -16,16 +16,70 @@ const escapeCell = (s: string) => s.replaceAll("|", "\\|");
 
 function rowLine(r: RowVerdict): string {
 	const m = r.metrics;
-	return `| ${escapeCell(r.id)} | ${r.pass ? "pass" : "FAIL"} | ${cell(m.start)} | ${cell(m.duration)} | ${cell(m.stagger)} | ${deviation(m.easing)} | ${cell(m.overshoot, 1)} | ${cell(m.distance, 3)} |`;
+	const result =
+		r.advisory === null
+			? r.pass
+				? "pass"
+				: "FAIL"
+			: r.pass
+				? "match"
+				: "differs";
+	return `| ${escapeCell(r.id)} | ${result} | ${cell(m.start)} | ${cell(m.duration)} | ${cell(m.stagger)} | ${deviation(m.easing)} | ${cell(m.overshoot, 1)} | ${cell(m.distance, 3)} |`;
+}
+
+/** PASS or FAIL, with the advisory row and coverage warning counts so a PASS is never read as complete. */
+export function verdictLabel(v: Verdict): string {
+	const n = v.coverage?.warnings.length ?? 0;
+	const { rows, advisory } = v.summary;
+	const base = `${v.pass ? "PASS" : "FAIL"}${advisory ? ` (${rows - advisory} rows checked, ${advisory} advisory)` : ""}`;
+	return n ? `${base} with ${n} coverage warning${n === 1 ? "" : "s"}` : base;
+}
+
+const TABLE = [
+	"| id | result | start | duration | stagger gap | easing | overshoot | distance |",
+	"| --- | --- | --- | --- | --- | --- | --- | --- |",
+];
+
+/** Low-confidence rows: their numbers and why the evidence is weak; they never fail the verdict. */
+function advisoryLines(rows: RowVerdict[]): string[] {
+	if (rows.length === 0) return [];
+	return [
+		"",
+		"## Advisory (low confidence)",
+		"",
+		"The reference shows too little of these motions to hold a rebuild to them; they are compared but never fail the verdict.",
+		"",
+		...TABLE,
+		...rows.map(rowLine),
+		"",
+		...rows.map(
+			(r) =>
+				`- ${r.id}: evidence is weak: ${r.advisory}${r.pass ? "" : `. Differs: ${r.failures.join("; ")}`}`,
+		),
+	];
+}
+
+// Elements with the same rows and gaps share one line.
+function notMeasuredLines(c: NonNullable<Verdict["coverage"]>): string[] {
+	const groups = new Map<string, string[]>();
+	for (const e of c.elements) {
+		const rows = e.rows.length ? `rows ${e.rows.join(", ")}` : "held still";
+		const line = `${rows}; not measured: ${e.notMeasured.join(", ")}`;
+		groups.set(line, [...(groups.get(line) ?? []), e.id]);
+	}
+	return [...groups].map(([line, ids]) => `- ${ids.join(", ")}: ${line}`);
 }
 
 /** Concise markdown summary of a verdict: one table row per spec row, then what to fix. */
 export function renderReport(v: Verdict): string {
 	const out = [
-		`# motionclone verify: ${v.pass ? "PASS" : "FAIL"}`,
+		`# motionclone verify: ${verdictLabel(v)}`,
 		"",
-		`${v.summary.passed} of ${v.summary.rows} rows pass. Fidelity: ${v.fidelity}.`,
+		v.summary.advisory
+			? `${v.summary.passed} of ${v.summary.rows - v.summary.advisory} checked rows pass, ${v.summary.advisory} advisory. Fidelity: ${v.fidelity}.`
+			: `${v.summary.passed} of ${v.summary.rows} rows pass. Fidelity: ${v.fidelity}.`,
 	];
+	const checked = v.rows.filter((r) => r.advisory === null);
 	if (v.setupErrors.length > 0) {
 		out.push("", "## Setup errors", "", ...v.setupErrors.map((e) => `- ${e}`));
 		return `${out.join("\n")}\n`;
@@ -34,11 +88,25 @@ export function renderReport(v: Verdict): string {
 		"",
 		"Values are want / got; `!` marks a failing check. Times in ms, overshoot in %, easing as max progress deviation.",
 		"",
-		"| id | result | start | duration | stagger gap | easing | overshoot | distance |",
-		"| --- | --- | --- | --- | --- | --- | --- | --- |",
-		...v.rows.map(rowLine),
+		...TABLE,
+		...checked.map(rowLine),
+		...advisoryLines(v.rows.filter((r) => r.advisory !== null)),
 	);
-	const failing = v.rows.filter((r) => !r.pass);
+	const noted = v.rows.filter((r) => r.notes.length > 0);
+	if (noted.length > 0)
+		out.push(
+			"",
+			"## Partly observed",
+			"",
+			...noted.map((r) => {
+				const e = r.metrics.evidence;
+				const gap = e
+					? ` (rms gap to the visible readings ${e.got?.toFixed(3)}, spec curve ${e.want?.toFixed(3)}, allowed +${e.tol})`
+					: "";
+				return `- ${r.id}: ${r.notes.join("; ")}${gap}`;
+			}),
+		);
+	const failing = checked.filter((r) => !r.pass);
 	if (failing.length > 0)
 		out.push(
 			"",
@@ -58,6 +126,25 @@ export function renderReport(v: Verdict): string {
 		);
 	if (v.warnings.length > 0)
 		out.push("", "## Warnings", "", ...v.warnings.map((w) => `- ${w.message}`));
+	const c = v.coverage;
+	if (c && c.warnings.length > 0)
+		out.push(
+			"",
+			"## Coverage warnings",
+			"",
+			"The reference changes here in ways no row checks; they do not fail the verdict, so compare them by eye.",
+			"",
+			...c.warnings.map((w) => `- ${w.message}`),
+		);
+	if (c)
+		out.push(
+			"",
+			"## Not measured",
+			"",
+			`Source: ${c.source}. Visible properties listed as not measured are never compared.`,
+			"",
+			...notMeasuredLines(c),
+		);
 	return `${out.join("\n")}\n`;
 }
 

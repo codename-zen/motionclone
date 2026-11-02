@@ -15,11 +15,14 @@ It works as a CLI, as an MCP server for any agent, and with an agent skill that 
 
 ## What it measures
 
-- Start, duration and end of every moving element, per property (opacity, translate, scale, rotate, size).
+- Start, duration and end of every moving element, per property (opacity, translate, scale, rotate, size, blur).
+  Scale, rotation and translation are read from `transform` combined with the separate `scale`, `rotate` and `translate` properties; blur is the radius of `filter: blur()`.
 - Easing: named presets, any cubic-bezier, springs (with stiffness, damping and a CSS `linear()` curve), steps.
 - Staggers between siblings, overshoot, distance relative to the element size.
 - Elements that must stay still.
 - Pixels on rest frames (mismatch and SSIM), enforced only when you ask for pixel fidelity.
+- Coverage: per tracked element, the properties that became rows and the visible ones that were not measured.
+  Verify also warns when the reference changes inside an element while none of its rows moves, and when it changes outside every tracked element; a passing verdict with warnings reads "PASS with N coverage warnings".
 
 Sources: live pages and local HTML (CSS animations and transitions, the Web Animations API, GSAP, Motion and other JavaScript animation), and videos or gifs (screen recordings, exported prototypes).
 
@@ -59,7 +62,7 @@ motionclone verify ref mine
 ...
 ```
 
-`verify` prints a table and a list of fixes, writes `verdict.json`, `report.md` and comparison sheets for the failing rows only, and exits with 0 when every row passes, 1 when rows fail and 2 on a setup error:
+`verify` prints a table and a list of fixes, writes `verdict.json`, `report.md` and labelled comparison sheets (id, message, Reference, Clone and Difference columns, a time per row) for the failing rows only, and exits with 0 when every row passes, 1 when rows fail and 2 on a setup error:
 
 ```text
 # motionclone verify: FAIL
@@ -79,6 +82,12 @@ A comparison is only fair when both sides are recorded the same way, and `verify
 ### Triggers
 
 `--trigger` starts the motion: `load` (default), `none` for loops, `hover`, `leave` and `click` with `--target <css>`, and `scroll` with `--scroll-to <px|css>`.
+`--pre-click <css>` (repeatable) clicks elements in order before the trigger, for example `--pre-click ".cookie-banner button"` to dismiss a cookie banner.
+A selector that matches nothing is skipped with a warning.
+`--pre-js <code|file>` runs JavaScript in the page before the trigger; a path to an existing `.js` file is read, and statements and `await` work.
+Both run after `--wait-before` and before the pre-roll, under the same virtual clock as the rest of the capture, which then advances 100 ms after each group so handlers, timers and transitions finish before frame 0.
+With the `load` trigger they run after the page's load animations have started, so prefer `--trigger none` or a click when the motion should begin after the banner is gone.
+They are recorded in `capture.json`, so `--like` repeats them on the clone.
 Pages behind a login work with `--storage-state <file>` (a Playwright storage state) or `--cdp-url` to attach to a Chrome you are logged in to.
 
 ### From a video or gif
@@ -123,8 +132,13 @@ Design notes: [virtual time](docs/adr/0001-virtual-time.md), [video input](docs/
 
 ## Limits
 
-- Video input follows sideways and up-down movement; scale, rotation and colour-only changes in a video are not measured.
+- Video input follows movement, uniform scale and blur; rotation and colour-only changes in a video are not measured.
+- When a video hides the start of a motion (a card that fades in while it grows and sharpens), the spec marks the row `fromObserved: false` and extrapolates its start value; verify checks such rows against the frames the video shows, so curves that look the same on those frames pass, and the drafted duration and easing are a best guess.
+- Rows whose evidence is weak (few reliable samples, a loose fit, little of the change visible or poor tracker matches) are drafted with confidence "low"; verify lists them under "Advisory (low confidence)" with the reason and never fails on them, so a PASS with advisory rows says nothing about those motions.
+- Spec drafting rejects fits no page could produce (opacity outside 0..1, control points outside x 0..1 and y -1..2, overshoot the readings do not show, start values extrapolated beyond the visible change again); such motions come out as the closest plausible fit with lower confidence, not as the fit with the least error.
 - Canvas, WebGL and WebGPU drawing is not traced yet; their motion is only visible as pixels.
+- Colour, background, shadow, clip-path and anything drawn inside an element (text, images, canvas) never become rows; verify lists them under "Not measured" and warns when the first four change in a page reference.
+- Coverage warnings come from pixel change in the reference: a change that happens in the same time window as one of the element's rows (a colour fading together with the opacity) is not flagged, and frames where the page scrolls are skipped.
 - A looping `steps()` animation cannot be fitted yet, and `steps(n, start)` and `steps(n, end)` look the same in a track.
 - JavaScript timelines count from when their script ran, 16 ms before the first frame, so their declared delays read 16 ms earlier; this cancels out because both sides are captured the same way.
 

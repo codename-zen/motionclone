@@ -38,7 +38,7 @@ motionclone capture <url|path> --out .motionclone/ref --duration 1500 --track ".
 ### Reference is a recording (.mp4 .mov .webm .gif)
 
 Use this when the user gives a screen recording or gif and there is no page to open.
-Elements are found from pixels, so only translation and opacity are measured.
+Elements are found from pixels, so only translation, uniform scale, blur and opacity are measured.
 
 ```
 motionclone probe ref.mp4
@@ -64,6 +64,7 @@ motionclone spec .motionclone/ref
 One row per element and property: start, duration, easing, overshoot, distance.
 `declared` rows come from the page's own CSS or WAAPI animation; `measured` rows are fitted from the track.
 Springs list a Motion parameter set and a CSS `linear()` curve.
+Rows with `fromObserved: false` come from a recording that hides the start (an element fading in while it scales or blurs): `from` is extrapolated, duration and easing are a best guess, and verify checks the clone against the frames the recording shows.
 Elements under "still" must stay still in the clone.
 
 ## 4. Build

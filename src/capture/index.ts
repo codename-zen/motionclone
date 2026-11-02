@@ -14,6 +14,7 @@ import {
 } from "./options.ts";
 import { installRafFlush } from "./page-raf.ts";
 import { installPageRuntime, type PageRuntime } from "./page-runtime.ts";
+import { installVirtualTimeline } from "./page-timeline.ts";
 import { preSettleMs, runPreActions } from "./pre-actions.ts";
 import { detectStack } from "./stack.ts";
 import { MAX_MATCHES_PER_SELECTOR, sampleTrack } from "./tracker.ts";
@@ -104,6 +105,7 @@ export async function captureMotion(
 		await installClock(page);
 		await page.addInitScript(installRafFlush);
 		await page.addInitScript(installPageRuntime, opts.seed);
+		await page.addInitScript(installVirtualTimeline);
 		await page.goto(url, { waitUntil: "load" });
 
 		const clock = createVirtualClock(page);

@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>css-blur-scale-in</title>
+<style>
+*{box-sizing:border-box}
+:root{--accent:#2f6fed;--ink:#1d1d1f;--mute:#6e6e73;--line:#d2d2d7;--bg:#f5f5f7}
+body{margin:0;padding:48px;min-height:800px;font:16px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--ink)}
+h1{margin:0 0 24px;font-size:20px;font-weight:600}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
+.card{height:200px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:20px}
+.card b{display:block;color:var(--accent)}
+.card p{margin:8px 0 0;color:var(--mute)}
+.card{animation:blur-scale-in 600ms cubic-bezier(0.22,1,0.36,1) both;animation-delay:calc(150ms + var(--i) * 100ms)}
+@keyframes blur-scale-in{from{opacity:0;scale:0.92;filter:blur(12px)}to{opacity:1;scale:1;filter:blur(0)}}
+</style>
+</head>
+<body>
+<h1>Blur scale in</h1>
+<div class="grid">
+<div class="card" style="--i:0"><b>Card 1</b><p>Fades in, grows and sharpens.</p></div>
+<div class="card" style="--i:1"><b>Card 2</b><p>Fades in, grows and sharpens.</p></div>
+<div class="card" style="--i:2"><b>Card 3</b><p>Fades in, grows and sharpens.</p></div>
+</div>
+</body>
+</html>

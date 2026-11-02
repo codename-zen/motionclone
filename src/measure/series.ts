@@ -1,4 +1,5 @@
 import type { TrackedElement, TrackFrame } from "../capture/types.ts";
+import { blurPx, effectiveMatrix, type Matrix, parseMatrix } from "./style.ts";
 
 export const PROPERTIES = [
 	"opacity",
@@ -12,6 +13,7 @@ export const PROPERTIES = [
 	"y",
 	"width",
 	"height",
+	"blur",
 ] as const;
 
 export type Property = (typeof PROPERTIES)[number];
@@ -38,27 +40,25 @@ const IDENTITY: Decomposed = {
 	rotate: 0,
 };
 
-/** Decompose a computed transform (matrix or matrix3d) into translate, scale and rotate; skew is ignored. */
-export function decompose(transform: string): Decomposed {
-	const m = /^(matrix3d|matrix)\(([^)]*)\)$/.exec(transform.trim());
+/** Decompose a 2D matrix into translate, scale and rotate; skew is ignored. */
+function decomposeMatrix(m: Matrix | null): Decomposed {
 	if (!m) return IDENTITY;
-	const v = (m[2] ?? "").split(",").map(Number);
-	const is3d = m[1] === "matrix3d";
-	if (v.length !== (is3d ? 16 : 6) || v.some((n) => !Number.isFinite(n)))
-		return IDENTITY;
-	const [a, b, c, d, e, f] = is3d ? [v[0], v[1], v[4], v[5], v[12], v[13]] : v;
-	const [ra, rb, rc, rd] = [a, b, c, d].map((n) => n as number);
-	const det = (ra as number) * (rd as number) - (rb as number) * (rc as number);
-	const sx = Math.hypot(ra as number, rb as number);
+	const [a, b, c, d, e, f] = m;
+	const det = a * d - b * c;
+	const sx = Math.hypot(a, b);
 	return {
-		translateX: e as number,
-		translateY: f as number,
+		translateX: e,
+		translateY: f,
 		scaleX: sx,
 		scaleY: sx === 0 ? 0 : det / sx,
 		scale: Math.sqrt(Math.abs(det)),
-		rotate: (Math.atan2(rb as number, ra as number) * 180) / Math.PI,
+		rotate: (Math.atan2(b, a) * 180) / Math.PI,
 	};
 }
+
+/** Decompose a computed transform (matrix or matrix3d) into translate, scale and rotate; skew is ignored. */
+export const decompose = (transform: string): Decomposed =>
+	decomposeMatrix(parseMatrix(transform));
 
 const BOX = {
 	x: "x",
@@ -69,8 +69,13 @@ const BOX = {
 } as const;
 
 export function readProperty(el: TrackedElement, property: Property): number {
+	// A video opacity proxy can read past either end; opacity itself cannot.
+	if (property === "opacity") return Math.min(1, Math.max(0, el.opacity));
 	if (property in BOX) return el[BOX[property as keyof typeof BOX]];
-	return decompose(el.transform)[property as keyof Decomposed];
+	if (property === "blur") return blurPx(el.filter);
+	return decomposeMatrix(effectiveMatrix(el.transform, el, el))[
+		property as keyof Decomposed
+	];
 }
 
 /** One value per frame for a tracked element; rotation is unwrapped so 359 to 1 degrees is a 2 degree move. */

@@ -39,6 +39,7 @@ export const AnswerRow = z.object({
 		"rotate",
 		"width",
 		"height",
+		"blur",
 		"clipPath",
 		"backgroundColor",
 	]),

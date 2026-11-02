@@ -1,0 +1,149 @@
+{
+	"name": "css-blur-scale-in",
+	"description": "Three cards fade in, scale 0.92 to 1 and unblur from 12px, 600ms, delays 150 + i*100 ms, on load.",
+	"viewport": {
+		"width": 1280,
+		"height": 800
+	},
+	"trigger": {
+		"type": "load"
+	},
+	"captureMs": 1200,
+	"rows": [
+		{
+			"selector": ".card",
+			"index": 0,
+			"property": "opacity",
+			"from": 0,
+			"to": 1,
+			"startMs": 150,
+			"durationMs": 600,
+			"easing": {
+				"type": "cubic-bezier",
+				"p": [0.22, 1, 0.36, 1]
+			},
+			"iterations": 1,
+			"source": "css-animation"
+		},
+		{
+			"selector": ".card",
+			"index": 0,
+			"property": "scale",
+			"from": 0.92,
+			"to": 1,
+			"startMs": 150,
+			"durationMs": 600,
+			"easing": {
+				"type": "cubic-bezier",
+				"p": [0.22, 1, 0.36, 1]
+			},
+			"iterations": 1,
+			"source": "css-animation"
+		},
+		{
+			"selector": ".card",
+			"index": 0,
+			"property": "blur",
+			"from": 12,
+			"to": 0,
+			"startMs": 150,
+			"durationMs": 600,
+			"easing": {
+				"type": "cubic-bezier",
+				"p": [0.22, 1, 0.36, 1]
+			},
+			"iterations": 1,
+			"source": "css-animation"
+		},
+		{
+			"selector": ".card",
+			"index": 1,
+			"property": "opacity",
+			"from": 0,
+			"to": 1,
+			"startMs": 250,
+			"durationMs": 600,
+			"easing": {
+				"type": "cubic-bezier",
+				"p": [0.22, 1, 0.36, 1]
+			},
+			"iterations": 1,
+			"source": "css-animation"
+		},
+		{
+			"selector": ".card",
+			"index": 1,
+			"property": "scale",
+			"from": 0.92,
+			"to": 1,
+			"startMs": 250,
+			"durationMs": 600,
+			"easing": {
+				"type": "cubic-bezier",
+				"p": [0.22, 1, 0.36, 1]
+			},
+			"iterations": 1,
+			"source": "css-animation"
+		},
+		{
+			"selector": ".card",
+			"index": 1,
+			"property": "blur",
+			"from": 12,
+			"to": 0,
+			"startMs": 250,
+			"durationMs": 600,
+			"easing": {
+				"type": "cubic-bezier",
+				"p": [0.22, 1, 0.36, 1]
+			},
+			"iterations": 1,
+			"source": "css-animation"
+		},
+		{
+			"selector": ".card",
+			"index": 2,
+			"property": "opacity",
+			"from": 0,
+			"to": 1,
+			"startMs": 350,
+			"durationMs": 600,
+			"easing": {
+				"type": "cubic-bezier",
+				"p": [0.22, 1, 0.36, 1]
+			},
+			"iterations": 1,
+			"source": "css-animation"
+		},
+		{
+			"selector": ".card",
+			"index": 2,
+			"property": "scale",
+			"from": 0.92,
+			"to": 1,
+			"startMs": 350,
+			"durationMs": 600,
+			"easing": {
+				"type": "cubic-bezier",
+				"p": [0.22, 1, 0.36, 1]
+			},
+			"iterations": 1,
+			"source": "css-animation"
+		},
+		{
+			"selector": ".card",
+			"index": 2,
+			"property": "blur",
+			"from": 12,
+			"to": 0,
+			"startMs": 350,
+			"durationMs": 600,
+			"easing": {
+				"type": "cubic-bezier",
+				"p": [0.22, 1, 0.36, 1]
+			},
+			"iterations": 1,
+			"source": "css-animation"
+		}
+	]
+}

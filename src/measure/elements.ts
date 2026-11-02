@@ -5,6 +5,7 @@ import {
 	extractSeries,
 	PROPERTIES,
 	type Property,
+	readProperty,
 	type Series,
 } from "./series.ts";
 import { type MotionWindow, motionWindow } from "./window.ts";
@@ -36,6 +37,7 @@ const MIN_RANGE: Record<Property, number> = {
 	y: 0.5,
 	width: 0.5,
 	height: 0.5,
+	blur: 0.1,
 };
 
 const AXIS: Partial<Record<Property, "w" | "h">> = {
@@ -68,8 +70,16 @@ export function movingProperties(track: Track): MovingProperty[] {
 				if (Math.max(...values) - Math.min(...values) < MIN_RANGE[property])
 					continue;
 				const axis = AXIS[property];
+				// The box is drawn under the element's scale; the size a distance is relative to is the unscaled one.
+				const scale =
+					axis && firstBox
+						? Math.abs(
+								readProperty(firstBox, axis === "w" ? "scaleX" : "scaleY"),
+							)
+						: 1;
 				const window = motionWindow(series, {
-					size: axis && firstBox ? firstBox[axis] : undefined,
+					size:
+						axis && firstBox && scale > 0 ? firstBox[axis] / scale : undefined,
 				});
 				if (window) out.push({ selector, index, property, window, series });
 			}

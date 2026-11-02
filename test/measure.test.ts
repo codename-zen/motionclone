@@ -3,13 +3,20 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { captureMotion } from "../src/capture/index.ts";
-import type { TrackFrame } from "../src/capture/types.ts";
+import type { TrackedElement, TrackFrame } from "../src/capture/types.ts";
 import {
 	listMovingElements,
 	movingProperties,
 } from "../src/measure/elements.ts";
-import { decompose, extractSeries, valueAt } from "../src/measure/series.ts";
+import {
+	decompose,
+	extractSeries,
+	readProperty,
+	valueAt,
+} from "../src/measure/series.ts";
+import { blurPx } from "../src/measure/style.ts";
 import { motionWindow } from "../src/measure/window.ts";
+import { motionProperties } from "../src/spec/motion.ts";
 import { type StaticServer, serveRepo } from "./serve.ts";
 import { bezierCurve, FRAME_MS, sample, springCurve } from "./synth.ts";
 
@@ -31,6 +38,108 @@ describe("decompose", () => {
 			decompose("matrix3d(1,0,0,0, 0,1,0,0, 0,0,1,0, 12,34,0,1)"),
 		).toMatchObject({ translateX: 12, translateY: 34, scaleX: 1, rotate: 0 });
 		expect(decompose("none")).toMatchObject({ translateX: 0, scale: 1 });
+	});
+});
+
+describe("blur and individual transforms", () => {
+	const el = (over: Partial<TrackedElement>): TrackedElement => ({
+		index: 0,
+		x: 0,
+		y: 0,
+		w: 200,
+		h: 100,
+		opacity: 1,
+		transform: "none",
+		filter: "none",
+		clipPath: "none",
+		color: "",
+		backgroundColor: "",
+		boxShadow: "",
+		...over,
+	});
+
+	it("reads blur radii from a computed filter", () => {
+		expect(blurPx("none")).toBe(0);
+		expect(blurPx("blur(12px)")).toBe(12);
+		expect(blurPx("blur(3px) brightness(1.2)")).toBe(3);
+		expect(blurPx("blur(3px) blur(4px)")).toBeCloseTo(5);
+		expect(readProperty(el({ filter: "blur(0px)" }), "blur")).toBe(0);
+	});
+
+	it("applies translate, rotate and scale before transform", () => {
+		const e = el({ scale: "0.5", transform: "matrix(1, 0, 0, 1, 10, 0)" });
+		expect(readProperty(e, "scale")).toBeCloseTo(0.5);
+		expect(readProperty(e, "translateX")).toBeCloseTo(5);
+		const t = el({ translate: "50% 8px", rotate: "90deg" });
+		expect(readProperty(t, "translateX")).toBeCloseTo(100);
+		expect(readProperty(t, "translateY")).toBeCloseTo(8);
+		expect(readProperty(t, "rotate")).toBeCloseTo(90);
+		expect(readProperty(el({ scale: "2 3" }), "scaleY")).toBeCloseTo(3);
+		expect(readProperty(el({ rotate: "x 40deg" }), "rotate")).toBe(0);
+	});
+
+	it("finds scale and blur from matrix and filter strings alone, as video tracks write them", () => {
+		const frames: TrackFrame[] = Array.from({ length: 30 }, (_, k) => {
+			const t = Math.round(k * FRAME_MS);
+			const p = Math.min(1, Math.max(0, (t - 100) / 300));
+			const s = 0.9 + 0.1 * p;
+			return {
+				frame: k,
+				t,
+				scrollY: 0,
+				elements: {
+					card: [
+						el({
+							transform: `matrix(${s}, 0, 0, ${s}, 0, 0)`,
+							filter: `blur(${10 * (1 - p)}px)`,
+						}),
+					],
+				},
+			};
+		});
+		const out = movingProperties({
+			selectors: ["card"],
+			frameMs: FRAME_MS,
+			frames,
+		});
+		const blur = out.find((m) => m.property === "blur");
+		const scale = out.find((m) => m.property === "scale");
+		expect(blur?.window).toMatchObject({ from: 10, to: 0, relative: null });
+		expect(scale?.window.from).toBeCloseTo(0.9);
+		expect(scale?.window.to).toBeCloseTo(1);
+		// The box does not travel, so scale explains its size change and no x/y/width rows remain.
+		expect(
+			motionProperties({ selectors: ["card"], frameMs: FRAME_MS, frames })
+				.map((m) => m.property)
+				.sort(),
+		).toEqual(["blur", "scale"]);
+	});
+
+	it("keeps box travel that a scale change cannot explain", () => {
+		const frames: TrackFrame[] = Array.from({ length: 30 }, (_, k) => {
+			const t = Math.round(k * FRAME_MS);
+			const p = Math.min(1, Math.max(0, (t - 100) / 300));
+			const s = 0.98 + 0.02 * p;
+			return {
+				frame: k,
+				t,
+				scrollY: 0,
+				elements: {
+					card: [
+						el({
+							y: 40 * (1 - p),
+							transform: `matrix(${s}, 0, 0, ${s}, 0, 0)`,
+						}),
+					],
+				},
+			};
+		});
+		const props = motionProperties({
+			selectors: ["card"],
+			frameMs: FRAME_MS,
+			frames,
+		}).map((m) => m.property);
+		expect(props.sort()).toEqual(["scale", "y"]);
 	});
 });
 

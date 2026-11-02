@@ -33,6 +33,10 @@ export const HELP: Record<string, string> = {
   --pad <px>              Padding for --selector (default 16)
   --pre-roll <ms>         Idle time recorded before the trigger
   --wait-before <ms>      Idle time before the trigger fires
+  --pre-js <code|file>    JavaScript run after load, before the trigger (a path to an existing .js
+                          file is read); statements and await work, e.g. to set a class
+  --pre-click <css>       Click this element before the trigger; repeatable, run in order,
+                          skipped with a warning when not found (cookie banners)
   --color-scheme <s>      light | dark | no-preference
   --reduced-motion        Emulate prefers-reduced-motion: reduce
   --storage-state <file>  Playwright storage state (logged-in pages)

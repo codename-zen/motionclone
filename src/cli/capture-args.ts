@@ -1,3 +1,4 @@
+import { existsSync, readFileSync } from "node:fs";
 import { z } from "zod";
 import { type CaptureInput, captureMotion } from "../capture/index.ts";
 import type { CaptureSummary } from "../capture/types.ts";
@@ -49,6 +50,18 @@ export const CaptureArgs = z.object({
 		.number()
 		.optional()
 		.describe("Idle ms before the trigger fires"),
+	preJs: z
+		.string()
+		.optional()
+		.describe(
+			"JavaScript run in the page after load and before the trigger (statements and await allowed), e.g. to dismiss a cookie banner",
+		),
+	preClick: z
+		.array(z.string())
+		.optional()
+		.describe(
+			"CSS selectors clicked in order before the trigger; a selector that matches nothing is skipped with a warning",
+		),
 	colorScheme: z.enum(["light", "dark", "no-preference"]).optional(),
 	reducedMotion: z
 		.boolean()
@@ -89,6 +102,13 @@ export const CaptureArgs = z.object({
 		.describe("Video input: find moving blobs automatically (the default)"),
 });
 export type CaptureArgs = z.infer<typeof CaptureArgs>;
+
+/** A path to an existing .js file is read; anything else is the code itself. */
+export function preJsOf(value: string | undefined): string | undefined {
+	if (value && /.m?js$/i.test(value) && existsSync(value))
+		return readFileSync(value, "utf8");
+	return value;
+}
 
 export function numbers(
 	text: string,
@@ -178,6 +198,8 @@ export async function buildCaptureInput(a: CaptureArgs): Promise<CaptureInput> {
 			clip: clipOf(a),
 			preRollMs: a.preRoll,
 			waitBeforeMs: a.waitBefore,
+			preJs: a.preJs,
+			preClick: a.preClick,
 			colorScheme: a.colorScheme,
 			reducedMotion: a.reducedMotion ? "reduce" : undefined,
 			storageState: a.storageState,

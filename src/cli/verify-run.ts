@@ -1,7 +1,7 @@
 import { existsSync, statSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import { renderReport } from "../report/report.ts";
+import { renderReport, verdictLabel } from "../report/report.ts";
 import { type SheetInfo, writeSheets } from "../report/sheet.ts";
 import { SpecFile } from "../spec/schema.ts";
 import { type VerifyOptions, verify } from "../verify/index.ts";
@@ -95,15 +95,25 @@ export function pathLines(run: VerifyRun): string[] {
 /** Compact text for agents: counts, failing rows with messages, paths. */
 export function summarize(run: VerifyRun): string {
 	const { verdict: v } = run;
-	const head = `${v.pass ? "PASS" : "FAIL"}: ${v.summary.passed}/${v.summary.rows} rows pass (fidelity ${v.fidelity})`;
+	const checked = v.summary.rows - v.summary.advisory;
+	const head = `${verdictLabel(v)}: ${v.summary.passed}/${checked} rows pass (fidelity ${v.fidelity})`;
 	const lines = [head];
 	for (const e of v.setupErrors) lines.push(`setup error: ${e}`);
-	for (const r of v.rows) if (!r.pass) lines.push(`- ${r.message}`);
+	for (const r of v.rows) {
+		if (r.pass) continue;
+		lines.push(
+			r.advisory === null
+				? `- ${r.message}`
+				: `- advisory, does not fail (${r.advisory}): ${r.message}`,
+		);
+	}
 	const p = v.pixel;
 	if (p && !p.skipped && !p.pass)
 		lines.push(
 			`- rest frames: mean mismatch ${((p.meanMismatch ?? 0) * 100).toFixed(2)} % over limit ${(p.threshold * 100).toFixed(1)} %`,
 		);
 	for (const w of v.warnings) lines.push(`warning: ${w.message}`);
+	for (const w of v.coverage?.warnings ?? [])
+		lines.push(`coverage: ${w.message}`);
 	return [...lines, ...pathLines(run)].join("\n");
 }

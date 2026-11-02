@@ -21,6 +21,8 @@ const PAGE_ONLY: (keyof CaptureArgs)[] = [
 	"pad",
 	"preRoll",
 	"waitBefore",
+	"preJs",
+	"preClick",
 	"colorScheme",
 	"reducedMotion",
 	"storageState",

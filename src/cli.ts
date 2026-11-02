@@ -2,7 +2,7 @@
 import { dirname, join } from "node:path";
 import { parseArgs } from "node:util";
 import { ZodError } from "zod";
-import { type CaptureArgs, UsageError } from "./cli/capture-args.ts";
+import { type CaptureArgs, preJsOf, UsageError } from "./cli/capture-args.ts";
 import { captureLines } from "./cli/capture-run.ts";
 import { HELP, MAIN_HELP } from "./cli/help.ts";
 import { pathLines, runVerify } from "./cli/verify-run.ts";
@@ -29,6 +29,8 @@ const CAPTURE_FLAGS = {
 	pad: { type: "string" },
 	"pre-roll": { type: "string" },
 	"wait-before": { type: "string" },
+	"pre-js": { type: "string" },
+	"pre-click": { type: "string", multiple: true },
 	"color-scheme": { type: "string" },
 	"reduced-motion": { type: "boolean" },
 	"storage-state": { type: "string" },
@@ -126,6 +128,8 @@ async function capture(args: string[]): Promise<number> {
 		pad: num("pad", v.pad),
 		preRoll: num("pre-roll", v["pre-roll"]),
 		waitBefore: num("wait-before", v["wait-before"]),
+		preJs: preJsOf(v["pre-js"]),
+		preClick: v["pre-click"],
 		colorScheme: oneOf("color-scheme", v["color-scheme"], [
 			"light",
 			"dark",

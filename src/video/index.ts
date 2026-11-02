@@ -11,11 +11,8 @@ import { type ExtractResult, extractFrames } from "./extract.ts";
 import { readLuma } from "./luma.ts";
 import { ExtractOptions, parseRegionName, Region } from "./options.ts";
 import { findBlobs } from "./regions.ts";
-import {
-	type RegionTrack,
-	type TrackRegionInput,
-	trackRegions,
-} from "./track.ts";
+import { type RegionSample, type RegionTrack, sampleBox } from "./samples.ts";
+import { MIN_BLUR, type TrackRegionInput, trackRegions } from "./track.ts";
 
 export { extractFrames } from "./extract.ts";
 export { parseTime } from "./options.ts";
@@ -93,20 +90,31 @@ function toFramePx(regions: Region[], ex: ExtractResult): TrackRegionInput[] {
 }
 
 function element(t: RegionTrack, k: number, css: number): TrackedElement {
-	const s = t.samples[k];
+	const s = t.samples[k] as RegionSample;
+	// Regions that do not scale are tracked with scale fixed at exactly 1.
+	const scale = Math.round(s.scale * 10000) / 10000;
+	const b = sampleBox(t.box, { ...s, scale });
+	const blur = s.blur < MIN_BLUR ? 0 : r1(s.blur * css);
 	return {
 		index: parseRegionName(t.name).index,
-		x: r1((t.box.x + (s?.dx ?? 0)) * css),
-		y: r1((t.box.y + (s?.dy ?? 0)) * css),
-		w: r1(t.box.w * css),
-		h: r1(t.box.h * css),
-		opacity: opacity(s?.opacity ?? 0),
-		transform: "none",
-		filter: "none",
+		x: r1(b.x * css),
+		y: r1(b.y * css),
+		w: r1(b.w * css),
+		h: r1(b.h * css),
+		opacity: opacity(s.opacity),
+		transform: scale === 1 ? "none" : `matrix(${scale}, 0, 0, ${scale}, 0, 0)`,
+		filter: blur === 0 ? "none" : `blur(${blur}px)`,
 		clipPath: "none",
 		color: "",
 		backgroundColor: "",
 		boxShadow: "none",
+		quality: Math.round(s.quality * 100) / 100,
+		observed: {
+			position: s.found,
+			scale: s.status === "found",
+			blur: s.status === "found",
+			opacity: s.status !== "other",
+		},
 	};
 }
 

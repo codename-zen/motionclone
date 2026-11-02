@@ -4,6 +4,7 @@ import pixelmatch from "pixelmatch";
 import { PNG } from "pngjs";
 import { Answer, type AnswerRow } from "../fixtures/answer-schema.ts";
 import type { TrackFrame } from "../src/capture/types.ts";
+import type { Track } from "../src/measure/elements.ts";
 import { bezierEasing, curveSpanMs, unitCurve } from "../src/spec/easing.ts";
 import type { Easing, SpecFile, SpecRow } from "../src/spec/schema.ts";
 import { runFfmpegOrThrow } from "../src/video/ffmpeg.ts";
@@ -35,6 +36,20 @@ export const boxAt = (
 	if (!e) throw new Error(`no ${selector}[${index}]`);
 	return e;
 };
+
+/** The box an element covers from its first to its last frame: start and end positions both inside. */
+export function sweep(track: Track, selector: string): Box {
+	const a = boxAt(track.frames[0], selector, 0);
+	const b = boxAt(track.frames.at(-1), selector, 0);
+	const x = Math.min(a.x, b.x);
+	const y = Math.min(a.y, b.y);
+	return {
+		x,
+		y,
+		w: Math.max(a.x + a.w, b.x + b.w) - x,
+		h: Math.max(a.y + a.h, b.y + b.h) - y,
+	};
+}
 
 export const answerOf = async (name: string) =>
 	Answer.parse(

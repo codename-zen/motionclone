@@ -7,51 +7,42 @@ export interface Rect {
 	h: number;
 }
 
-interface Template extends Rect {
-	/** Zero-mean template values. */
+/** A zero-mean template. */
+export interface Grid {
+	w: number;
+	h: number;
 	t: Float32Array;
 	sumSq: number;
 }
 
-export interface Templates {
-	full: Template;
-	coarse: Template | null;
-}
-
 export interface Frame {
 	full: Plane;
+	half: Plane;
 	coarse: Plane;
 }
 
-export interface Match {
-	dx: number;
-	dy: number;
+export interface Hit {
+	/** Top-left of the template in the plane. */
+	x: number;
+	y: number;
 	/** Normalised cross-correlation with the template, -1..1. */
 	ncc: number;
-	/** Contrast against the template: the slope of frame values on template values, 1 at the reference frame. */
+	/** Contrast against the template: the slope of frame values on template values. */
 	contrast: number;
+	/** Standard deviation of the frame values under the template, luma levels. */
+	spread: number;
 }
 
 export const COARSE = 4;
-const COARSE_RADIUS = 10;
-const FINE_RADIUS = 3;
-const FLAT_RADIUS = 16;
-const MIN_COARSE_SIDE = 8;
 
-export const pyramid = (full: Plane): Frame => ({
-	full,
-	coarse: downsample(full, COARSE),
-});
+export function pyramid(full: Plane): Frame {
+	const half = downsample(full, 2);
+	return { full, half, coarse: downsample(half, COARSE / 2) };
+}
 
-function template(p: Plane, r: Rect): Template {
-	const t = new Float32Array(r.w * r.h);
+export function gridOf(t: Float32Array, w: number, h: number): Grid {
 	let sum = 0;
-	for (let j = 0; j < r.h; j++)
-		for (let i = 0; i < r.w; i++) {
-			const v = p.data[(r.y + j) * p.width + r.x + i] as number;
-			t[j * r.w + i] = v;
-			sum += v;
-		}
+	for (let i = 0; i < t.length; i++) sum += t[i] as number;
 	const mean = sum / t.length;
 	let sumSq = 0;
 	for (let i = 0; i < t.length; i++) {
@@ -59,68 +50,57 @@ function template(p: Plane, r: Rect): Template {
 		t[i] = v;
 		sumSq += v * v;
 	}
-	return { ...r, t, sumSq };
+	return { w, h, t, sumSq };
 }
 
-export function makeTemplates(ref: Frame, r: Rect): Templates {
-	const c = {
-		x: Math.floor(r.x / COARSE),
-		y: Math.floor(r.y / COARSE),
-		w: Math.floor(r.w / COARSE),
-		h: Math.floor(r.h / COARSE),
-	};
-	const fits = c.x + c.w <= ref.coarse.width && c.y + c.h <= ref.coarse.height;
-	return {
-		full: template(ref.full, r),
-		coarse:
-			c.w >= MIN_COARSE_SIDE && c.h >= MIN_COARSE_SIDE && fits
-				? template(ref.coarse, c)
-				: null,
-	};
-}
-
-/** NCC and contrast of the template shifted by (dx, dy); null when the shifted box leaves the frame. */
-function score(p: Plane, tpl: Template, dx: number, dy: number) {
-	const x0 = tpl.x + dx;
-	const y0 = tpl.y + dy;
-	if (x0 < 0 || y0 < 0 || x0 + tpl.w > p.width || y0 + tpl.h > p.height)
+/** NCC, contrast and patch spread of the template with its top-left at (x0, y0); null when it leaves the plane. */
+export function score(p: Plane, g: Grid, x0: number, y0: number) {
+	if (x0 < 0 || y0 < 0 || x0 + g.w > p.width || y0 + g.h > p.height)
 		return null;
 	let sp = 0;
 	let spp = 0;
 	let spt = 0;
 	const d = p.data;
-	const t = tpl.t;
-	for (let j = 0; j < tpl.h; j++) {
+	const t = g.t;
+	for (let j = 0; j < g.h; j++) {
 		let o = (y0 + j) * p.width + x0;
-		let q = j * tpl.w;
-		for (let i = 0; i < tpl.w; i++, o++, q++) {
+		let q = j * g.w;
+		for (let i = 0; i < g.w; i++, o++, q++) {
 			const v = d[o] as number;
 			sp += v;
 			spp += v * v;
 			spt += v * (t[q] as number);
 		}
 	}
-	const n = tpl.w * tpl.h;
+	const n = g.w * g.h;
 	const varP = spp - (sp * sp) / n;
-	const denom = Math.sqrt(Math.max(varP, 0) * tpl.sumSq);
+	const denom = Math.sqrt(Math.max(varP, 0) * g.sumSq);
 	return {
 		ncc: denom > 1e-9 ? spt / denom : 0,
-		contrast: tpl.sumSq > 1e-9 ? spt / tpl.sumSq : 0,
+		contrast: g.sumSq > 1e-9 ? spt / g.sumSq : 0,
+		spread: Math.sqrt(Math.max(varP, 0) / n),
 	};
 }
 
-function best(p: Plane, tpl: Template, cx: number, cy: number, r: number) {
-	let top = { dx: cx, dy: cy, ncc: -2, contrast: 0 };
-	for (let dy = cy - r; dy <= cy + r; dy++)
-		for (let dx = cx - r; dx <= cx + r; dx++) {
-			const s = score(p, tpl, dx, dy);
-			if (s && s.ncc > top.ncc) top = { dx, dy, ...s };
+/** Best integer placement within `r` pixels of (cx, cy). */
+export function best(
+	p: Plane,
+	g: Grid,
+	cx: number,
+	cy: number,
+	r: number,
+): Hit {
+	let top: Hit = { x: cx, y: cy, ncc: -2, contrast: 0, spread: 0 };
+	for (let y = cy - r; y <= cy + r; y++)
+		for (let x = cx - r; x <= cx + r; x++) {
+			const s = score(p, g, x, y);
+			if (s && s.ncc > top.ncc) top = { x, y, ...s };
 		}
 	return top;
 }
 
-// Vertex of the parabola through three samples, as an offset in -0.5..0.5.
-function vertex(
+/** Vertex of the parabola through three samples, as an offset in -0.5..0.5. */
+export function vertex(
 	a: number | undefined,
 	b: number,
 	c: number | undefined,
@@ -130,33 +110,11 @@ function vertex(
 	return den < 0 ? Math.max(-0.5, Math.min(0.5, (a - c) / (2 * den))) : 0;
 }
 
-/** Find the template near a predicted shift: coarse search, integer refinement, then sub-pixel parabolas. */
-export function locate(
-	f: Frame,
-	tpls: Templates,
-	pred: { dx: number; dy: number },
-): Match {
-	let cx = Math.round(pred.dx);
-	let cy = Math.round(pred.dy);
-	let radius = FLAT_RADIUS;
-	if (tpls.coarse) {
-		const c = best(
-			f.coarse,
-			tpls.coarse,
-			Math.round(pred.dx / COARSE),
-			Math.round(pred.dy / COARSE),
-			COARSE_RADIUS,
-		);
-		cx = c.dx * COARSE;
-		cy = c.dy * COARSE;
-		radius = FINE_RADIUS + COARSE / 2;
-	}
-	const m = best(f.full, tpls.full, cx, cy, radius);
-	const at = (dx: number, dy: number) => score(f.full, tpls.full, dx, dy)?.ncc;
+/** Sub-pixel refinement of an integer hit on each axis, in plane pixels. */
+export function subPixel(p: Plane, g: Grid, h: Hit): { x: number; y: number } {
+	const at = (x: number, y: number) => score(p, g, x, y)?.ncc;
 	return {
-		dx: m.dx + vertex(at(m.dx - 1, m.dy), m.ncc, at(m.dx + 1, m.dy)),
-		dy: m.dy + vertex(at(m.dx, m.dy - 1), m.ncc, at(m.dx, m.dy + 1)),
-		ncc: m.ncc,
-		contrast: m.contrast,
+		x: h.x + vertex(at(h.x - 1, h.y), h.ncc, at(h.x + 1, h.y)),
+		y: h.y + vertex(at(h.x, h.y - 1), h.ncc, at(h.x, h.y + 1)),
 	};
 }

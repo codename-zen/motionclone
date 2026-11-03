@@ -259,6 +259,37 @@ describe("toUrl", () => {
 		expect(toUrl("D:/site/index.html")).toBe("file:///D:/site/index.html");
 	});
 
+	it("keeps a #fragment or ?query on a local path", () => {
+		expect(toUrl("C:\\x\\my page\\index.html#demo")).toBe(
+			"file:///C:/x/my%20page/index.html#demo",
+		);
+		const fixture = join(
+			import.meta.dirname,
+			"..",
+			"fixtures",
+			"_smoke",
+			"index.html",
+		);
+		expect(toUrl(`${fixture}#x`)).toMatch(
+			/^file:\/\/\/.*\/_smoke\/index\.html#x$/,
+		);
+		expect(toUrl(`${fixture}?a=1#x`)).toMatch(/index\.html\?a=1#x$/);
+	});
+
+	it("captures a local path that carries a #fragment", async () => {
+		const fixture = join(
+			import.meta.dirname,
+			"..",
+			"fixtures",
+			"_smoke",
+			"index.html",
+		);
+		const summary = await captureMotion(
+			smoke("fragment", { url: `${fixture}#x`, durationMs: 200 }),
+		);
+		expect(summary.frames).toBeGreaterThan(1);
+	}, 60_000);
+
 	it("passes URLs through", () => {
 		expect(toUrl("https://example.com/a?b=1")).toBe(
 			"https://example.com/a?b=1",

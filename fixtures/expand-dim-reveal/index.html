@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>expand-dim-reveal</title>
+<style>
+  html, body { margin: 0; width: 816px; height: 1080px; overflow: hidden; background: #fbf6ee; font-family: system-ui, sans-serif; color: #2b2233; }
+  .header { position: absolute; left: 0; top: 0; width: 816px; height: 300px; }
+  .header h1 { position: absolute; left: 46px; top: 120px; margin: 0; font-size: 72px; font-weight: 500; }
+  .header p { position: absolute; left: 48px; top: 215px; margin: 0; font-size: 30px; }
+  .header .sun { position: absolute; right: 70px; top: 90px; width: 190px; height: 190px; border-radius: 50%; background: radial-gradient(circle at 40% 40%, #ffd27a, #ff9f5a); }
+  .tile { position: absolute; width: 347px; height: 348px; border-radius: 28px; background: #fff; box-shadow: 0 0 0 2px #eee3d6; }
+  .tile.b { left: 424px; top: 336px; background: linear-gradient(160deg, #ffe7c2, #fff 60%); }
+  .tile.c { left: 46px; top: 712px; background: linear-gradient(160deg, #d9f2ea, #fff 60%); }
+  .tile.d { left: 424px; top: 712px; background: linear-gradient(160deg, #e8e4f5, #fff 60%); }
+  .dim { position: absolute; inset: 0; background: #120d18; opacity: 0;
+    animation: dim 272ms cubic-bezier(0.25, 0.1, 0.25, 1) 650ms both; }
+  @keyframes dim { to { opacity: 0.78; } }
+
+  /* Final rect: left 130, top 336, 556 x 556; scaled from its top edge so the top stays put. */
+  .card { position: absolute; left: 130px; top: 336px; width: 556px; height: 556px; border-radius: 40px; overflow: hidden;
+    transform-origin: 50% 0; background: #fff;
+    animation: grow 310ms cubic-bezier(0.4, 0, 0.2, 1) 640ms both, move 258ms cubic-bezier(0.25, 0.1, 0.25, 1) 674ms both; }
+  @keyframes grow { from { scale: 0.624; } to { scale: 1; } }
+  @keyframes move { from { translate: -188.5px 0; } to { translate: 0 0; } }
+  .prize { position: absolute; inset: 0; background: linear-gradient(180deg, #ffd27a 0 42%, #fff 42%); }
+  .prize b { position: absolute; left: 40px; top: 300px; font-size: 64px; font-weight: 500; }
+  .prize i { position: absolute; left: 42px; top: 385px; font-style: normal; font-size: 34px; }
+  .cover { position: absolute; inset: 0;
+    animation: reveal 260ms linear 1500ms both; }
+  @keyframes reveal { to { opacity: 0; } }
+  .cover canvas { display: block; }
+</style>
+</head>
+<body>
+  <div class="header"><h1>$42.10</h1><p>Your rewards</p><div class="sun"></div></div>
+  <div class="tile b"></div><div class="tile c"></div><div class="tile d"></div>
+  <div class="dim"></div>
+  <div class="card">
+    <div class="prize"><b>$1.20</b><i>Cashback</i></div>
+    <div class="cover"><canvas width="556" height="556"></canvas></div>
+  </div>
+<script>
+  const c = document.querySelector("canvas").getContext("2d");
+  c.fillStyle = "#6d4aff"; c.fillRect(0, 0, 556, 556);
+  c.fillStyle = "#8a6bff";
+  for (let i = 0; i < 40; i++) { c.beginPath(); c.arc((i * 137) % 556, (i * 89) % 556, 10 + (i % 3) * 6, 0, Math.PI * 2); c.fill(); }
+</script>
+</body>
+</html>

@@ -1,5 +1,5 @@
 import { easingLabel, unitCurve } from "../spec/easing.ts";
-import type { SpecRow } from "../spec/schema.ts";
+import { PROGRESS, type SpecRow } from "../spec/schema.ts";
 import type { CloneMotion } from "./clone.ts";
 import type { Metric } from "./schema.ts";
 
@@ -12,7 +12,12 @@ export const rowLabel = (row: SpecRow) =>
 	`${row.selector}[${row.index}] ${row.property}`;
 
 export function unitOf(property: string): string {
-	if (property === "opacity" || property.startsWith("scale")) return "";
+	if (
+		property === "opacity" ||
+		property === PROGRESS ||
+		property.startsWith("scale")
+	)
+		return "";
 	return property === "rotate" ? " deg" : " px";
 }
 
@@ -22,6 +27,7 @@ const NEVER: Record<string, string> = {
 	scaleX: "scales horizontally",
 	scaleY: "scales vertically",
 	rotate: "rotates",
+	[PROGRESS]: "changes its appearance there",
 };
 
 export function timingMessage(

@@ -19,12 +19,14 @@ export type CloneMotion =
 	  }
 	| {
 			status: "moving";
-			motion: MovingProperty;
+			motion: Pick<MovingProperty, "series" | "window">;
 			fit: FittedMotion;
 			startMs: number;
 			durationMs: number;
 			/** The clone's own easing: declared, or named by the free fit. */
 			easing: Easing;
+			/** How this clone row was measured, when it differs from the usual track fit. */
+			notes?: string[];
 	  };
 
 const STAND_INS: Record<string, string[]> = {
@@ -91,6 +93,14 @@ function timingOf(
 		const { startMs, durationMs, easing } = declared;
 		return { startMs, durationMs, easing };
 	}
+	return measuredTiming(fit, row);
+}
+
+/** The clone's timing with the row's easing held fixed, as a measured reference row was fitted (ADR 0004). */
+export function measuredTiming(
+	fit: FittedMotion,
+	row: Pick<SpecRow, "easing" | "durationMs">,
+): { startMs: number; durationMs: number; easing: Easing } {
 	const easing = candidateEasing(fit.best);
 	// Step plateaus defeat the timing optimiser; the free fit already grid-searches them.
 	if (row.easing.type === "steps")

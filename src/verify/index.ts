@@ -20,6 +20,7 @@ import {
 	DEFAULT_PIXEL_THRESHOLD,
 	skippedPixels,
 } from "./pixels.ts";
+import { measurePixelRows, needsPixels } from "./progress.ts";
 import {
 	checkMotionRow,
 	checkStill,
@@ -89,10 +90,8 @@ export async function verify(
 	let pixel: Verdict["pixel"] = null;
 	let coverage: Coverage | null = null;
 	if (errors.length === 0) {
-		const idx = indexClone(
-			renameTrack(cloneTrack, map),
-			renameAnimations(cloneAnimations, map),
-		);
+		const renamed = renameTrack(cloneTrack, map);
+		const idx = indexClone(renamed, renameAnimations(cloneAnimations, map));
 		// Video distances are CSS px; the region box and the element box differ in size, so a relative distance would not compare.
 		const specRows = video
 			? spec.rows.map((r) => ({ ...r, relativeDistance: null }))
@@ -100,6 +99,17 @@ export async function verify(
 		const measured = new Map<string, CloneMotion>(
 			specRows.map((r) => [r.id, measureClone(idx, r)]),
 		);
+		const fromPixels = specRows.filter((r) =>
+			needsPixels(r, measured.get(r.id), video),
+		);
+		if (fromPixels.length > 0)
+			for (const [id, c] of await measurePixelRows(
+				clone,
+				renamed,
+				cloneCap.clip,
+				fromPixels,
+			))
+				if (measured.get(id)?.status !== "missing") measured.set(id, c);
 		const anchors = new Map<string, StaggerAnchor>();
 		for (const r of specRows) {
 			const c = measured.get(r.id);

@@ -2,7 +2,7 @@ import type { ClipRect } from "../capture/options.ts";
 import type { Track } from "../measure/elements.ts";
 import { extractSeries, PROPERTIES, type Property } from "../measure/series.ts";
 import { elementKey, trackedElements } from "../spec/motion.ts";
-import type { SpecFile } from "../spec/schema.ts";
+import { PROGRESS, type SpecFile } from "../spec/schema.ts";
 import { type Activity, pixelActivity } from "./activity.ts";
 import type { Coverage, CoverageWarning } from "./schema.ts";
 import { unmeasuredChanges } from "./unmeasured.ts";
@@ -76,12 +76,16 @@ function explainedFrames(spec: SpecFile, track: Track): Set<string>[] {
 	const frameMs = track.frameMs;
 	for (const r of spec.rows) {
 		const key = elementKey(r.selector, r.index);
-		const series = extractSeries(
-			track.frames,
-			r.selector,
-			r.index,
-			r.property as Property,
-		);
+		// A progress row has no track series: it explains change in its element's box while it runs.
+		const series =
+			r.property === PROGRESS
+				? []
+				: extractSeries(
+						track.frames,
+						r.selector,
+						r.index,
+						r.property as Property,
+					);
 		const values = new Map(series.map(([ts, v]) => [ts, v]));
 		const eps = 1e-4 * Math.max(Math.abs(r.to - r.from), 1e-3);
 		const start = r.startMs - frameMs;

@@ -1,5 +1,6 @@
-import type { SpecRow, StillEntry } from "../spec/schema.ts";
+import { PROGRESS, type SpecRow, type StillEntry } from "../spec/schema.ts";
 import type { CloneIndex, CloneMotion } from "./clone.ts";
+import { curveMessage, curveMetric } from "./curve.ts";
 import {
 	type Evidence,
 	evidenceMessage,
@@ -141,12 +142,22 @@ export function checkMotionRow(
 			failures.push(evidenceMessage(row, m));
 			focus.push(...span);
 		}
-	} else
+	} else {
 		checkTimingAndEasing(row, c, frameMs, anchor, start, {
 			metrics,
 			failures,
 			focus,
 		});
+		if (row.property === PROGRESS) {
+			const { metric: curve, atMs } = curveMetric(row, c, frameMs);
+			metrics.curve = curve;
+			// A timing failure already says what is off; the curve only adds when timing alone passes.
+			if (!curve.pass && failures.length === 0) {
+				failures.push(curveMessage(row, curve, atMs));
+				focus.push(atMs);
+			}
+		}
+	}
 
 	const overshoot = metric(
 		row.overshoot * 100,
@@ -205,7 +216,7 @@ export function checkMotionRow(
 		metrics,
 		failures,
 		focus.length ? focus : span,
-		partial ? [PARTIAL_NOTE] : [],
+		[...(partial ? [PARTIAL_NOTE] : []), ...(c.notes ?? [])],
 	);
 }
 

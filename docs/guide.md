@@ -66,6 +66,10 @@ The report also has these sections:
 - **Advisory**: rows with weak evidence.
   They are shown with their numbers but never fail the result.
 
+`progress` rows check how an element's look changes, such as a fade, a dim or a cross-fade.
+They are measured from pixels in the element's box, in the reference and in your version the same way.
+Their timing must match within one frame plus 20 ms, and their curve is also compared on the same clock.
+
 ## Default tolerances
 
 | Check                          | Tolerance            |
@@ -82,6 +86,10 @@ The report also has these sections:
   Rotation and colour changes in a video are not measured.
 - When an element is invisible at the start of its motion, its start value and exact easing are a best guess; only the visible part is checked.
 - Rows with weak evidence (few clear frames, a loose fit) are advisory and never fail.
+- From a video, an opacity row that the pixels contradict drops to medium or low confidence; its notes give both numbers.
+- Progress rows only cover changes that mix the frames before and after, like fades and cross-fades.
+  A change that moves or scales content gets no progress row.
+- From a page, progress rows appear only for changes no other row explains, such as a canvas cover fading inside a tracked card.
 - Canvas, WebGL and WebGPU drawing is not measured yet.
 - Colour, background, shadow, clip-path and the content inside an element (text, images) are not measured; the report lists them.
 - A `steps()` animation that loops cannot be fitted yet.

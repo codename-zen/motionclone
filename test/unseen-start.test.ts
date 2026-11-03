@@ -34,9 +34,6 @@ const windowOf = (start: number): MotionWindow =>
 const clone = (start: number): CloneMotion => ({
 	status: "moving",
 	motion: {
-		selector: "art",
-		index: 0,
-		property: "blur",
 		window: windowOf(start),
 		series: blurSeries(start),
 	},

@@ -11,7 +11,7 @@ import { UsageError } from "./capture-args.ts";
 export interface VerifyArgs {
 	spec: string;
 	cloneDir: string;
-	fidelity?: "motion" | "pixel";
+	fidelity?: "motion" | "look" | "pixel";
 	pixelThreshold?: number;
 	reducedClone?: string;
 	out?: string;

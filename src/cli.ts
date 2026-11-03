@@ -1,10 +1,19 @@
 #!/usr/bin/env node
 import { dirname, join } from "node:path";
-import { parseArgs } from "node:util";
 import { ZodError } from "zod";
 import { type CaptureArgs, preJsOf, UsageError } from "./cli/capture-args.ts";
 import { captureLines } from "./cli/capture-run.ts";
+import {
+	CAPTURE_FLAGS,
+	exactly,
+	num,
+	oneOf,
+	parse,
+	SIDE_BY_SIDE_FLAGS,
+	VERIFY_FLAGS,
+} from "./cli/flags.ts";
 import { HELP, MAIN_HELP } from "./cli/help.ts";
+import { sheetLines, sideBySideLines } from "./cli/media-run.ts";
 import { pathLines, runVerify } from "./cli/verify-run.ts";
 import { probeLines } from "./cli/video-args.ts";
 import { writeReport } from "./report/report.ts";
@@ -13,84 +22,6 @@ import { easingLabel } from "./spec/easing.ts";
 import { VERSION } from "./version.ts";
 
 const out = (text: string) => process.stdout.write(`${text}\n`);
-
-const CAPTURE_FLAGS = {
-	out: { type: "string" },
-	like: { type: "string" },
-	viewport: { type: "string" },
-	fps: { type: "string" },
-	duration: { type: "string" },
-	trigger: { type: "string" },
-	target: { type: "string" },
-	"scroll-to": { type: "string" },
-	track: { type: "string" },
-	clip: { type: "string" },
-	selector: { type: "string" },
-	pad: { type: "string" },
-	"pre-roll": { type: "string" },
-	"wait-before": { type: "string" },
-	"pre-js": { type: "string" },
-	"pre-click": { type: "string", multiple: true },
-	"color-scheme": { type: "string" },
-	"reduced-motion": { type: "boolean" },
-	"storage-state": { type: "string" },
-	"cdp-url": { type: "string" },
-	seed: { type: "string" },
-	start: { type: "string" },
-	end: { type: "string" },
-	crop: { type: "string" },
-	width: { type: "string" },
-	"css-scale": { type: "string" },
-	region: { type: "string", multiple: true },
-	"auto-regions": { type: "boolean" },
-} as const;
-
-const VERIFY_FLAGS = {
-	fidelity: { type: "string" },
-	"pixel-threshold": { type: "string" },
-	"reduced-clone": { type: "string" },
-	out: { type: "string" },
-	json: { type: "boolean" },
-	map: { type: "string", multiple: true },
-} as const;
-
-const num = (flag: string, v: string | undefined): number | undefined => {
-	if (v === undefined) return undefined;
-	const n = Number(v);
-	if (v.trim() === "" || !Number.isFinite(n))
-		throw new UsageError(`--${flag}: "${v}" is not a number`);
-	return n;
-};
-
-function oneOf<T extends string>(
-	flag: string,
-	v: string | undefined,
-	allowed: readonly T[],
-): T | undefined {
-	if (v !== undefined && !allowed.includes(v as T))
-		throw new UsageError(
-			`--${flag}: "${v}" must be one of ${allowed.join(", ")}`,
-		);
-	return v as T | undefined;
-}
-
-function parse<
-	O extends Record<string, { type: "string" | "boolean"; multiple?: boolean }>,
->(args: string[], options: O) {
-	return parseArgs({
-		args,
-		options: { help: { type: "boolean", short: "h" }, ...options },
-		allowPositionals: true,
-	});
-}
-
-function exactly(list: string[], count: number, usage: string): string[] {
-	if (list.length !== count)
-		throw new UsageError(
-			`expected ${count} argument${count === 1 ? "" : "s"}: ${usage}`,
-		);
-	return list;
-}
 
 function help(command?: string): number {
 	out((command ? HELP[command] : MAIN_HELP) as string);
@@ -184,7 +115,7 @@ async function verifyCmd(args: string[]): Promise<number> {
 	const run = await runVerify({
 		spec: specArg,
 		cloneDir,
-		fidelity: oneOf("fidelity", v.fidelity, ["motion", "pixel"]),
+		fidelity: oneOf("fidelity", v.fidelity, ["motion", "look", "pixel"]),
 		pixelThreshold: num("pixel-threshold", v["pixel-threshold"]),
 		reducedClone: v["reduced-clone"],
 		out: v.out,
@@ -200,6 +131,48 @@ async function report(args: string[]): Promise<number> {
 	if (v.help) return help("report");
 	const [file] = exactly(p, 1, "motionclone report <verdict.json>") as [string];
 	out((await writeReport(file, join(dirname(file), "report.md"))).trimEnd());
+	return 0;
+}
+
+async function sideBySideCmd(args: string[]): Promise<number> {
+	const { values: v, positionals: p } = parse(args, SIDE_BY_SIDE_FLAGS);
+	if (v.help) return help("side-by-side");
+	const [refDir, ...cloneDirs] = p;
+	const usage = "motionclone side-by-side <refDir> <cloneDir>... --out file.gif";
+	if (!refDir || cloneDirs.length === 0)
+		throw new UsageError(
+			`expected a reference and a clone directory: ${usage}`,
+		);
+	if (!v.out) throw new UsageError("--out <file.gif|file.mp4> is required");
+	const lines = await sideBySideLines({
+		refDir,
+		cloneDirs,
+		out: v.out,
+		labels: v.labels?.split(",").map((s) => s.trim()),
+		from: num("from", v.from),
+		to: num("to", v.to),
+		fps: num("fps", v.fps),
+		width: num("width", v.width),
+		crop: v.crop,
+		offset: v.offset?.split(",").map((s) => num("offset", s) as number),
+	});
+	for (const line of lines) out(line);
+	return 0;
+}
+
+async function sheetCmd(args: string[]): Promise<number> {
+	const { values: v, positionals: p } = parse(args, {
+		out: { type: "string" },
+	});
+	if (v.help) return help("sheet");
+	const [refDir, cloneDir] = exactly(
+		p,
+		2,
+		"motionclone sheet <refDir> <cloneDir> --out <dir>",
+	) as [string, string];
+	if (!v.out) throw new UsageError("--out <dir> is required");
+	for (const line of await sheetLines({ refDir, cloneDir, out: v.out }))
+		out(line);
 	return 0;
 }
 
@@ -221,6 +194,10 @@ async function main(argv: string[]): Promise<number> {
 			return verifyCmd(rest);
 		case "report":
 			return report(rest);
+		case "side-by-side":
+			return sideBySideCmd(rest);
+		case "sheet":
+			return sheetCmd(rest);
 		case "mcp": {
 			if (rest.includes("--help") || rest.includes("-h")) return help("mcp");
 			await (await import("./mcp.ts")).serveMcp();

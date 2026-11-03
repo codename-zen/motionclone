@@ -8,6 +8,8 @@ Commands:
   spec <captureDir>    Draft spec.json from a reference capture
   verify <spec|captureDir> <cloneDir>   Check a clone capture against the spec
   report <verdict.json>   Print a verdict as markdown
+  side-by-side <refDir> <cloneDir>...   Compose captures into a labelled GIF or MP4
+  sheet <refDir> <cloneDir>   Reference, clone and difference at rest frames (design check)
   mcp                  Start the MCP server on stdio
 
 Options:
@@ -61,7 +63,7 @@ Drafts <captureDir>/spec.json from the capture and prints one line per row.
 `,
 	verify: `Usage: motionclone verify <spec.json|captureDir> <cloneDir> [options]
 
-  --fidelity <mode>       motion (default) | pixel (also fails on rest-frame pixels)
+  --fidelity <mode>       motion (default) | look (also checks colours, type sizes and layout) | pixel (look plus rest-frame pixels)
   --pixel-threshold <n>   Allowed mean mismatch fraction on rest frames
   --reduced-clone <dir>   Clone capture taken with --reduced-motion
   --map ref=clone         Rename clone selectors to the reference names (repeatable):
@@ -80,8 +82,28 @@ Prints size, frame rate, duration and codec of a recording.
 
 Prints the verdict as markdown.
 `,
+	"side-by-side": `Usage: motionclone side-by-side <refDir> <cloneDir> [<cloneDir>...] --out file.gif|file.mp4
+
+  --labels "A,B,..."   One label per input, reference first (default Reference, Rebuild)
+  --from <ms>          Start, ms from each capture's t=0 (default: where all captures overlap)
+  --to <ms>            End, same clock
+  --fps <n>            Output frame rate (default: the reference's, at most 30)
+  --width <px>         Largest picture width (default 1280)
+  --crop x,y,w,h       Crop of each input; repeat once per input, or once for all ("-" keeps a frame whole)
+  --offset "0,120"     Per input, ms into that capture that lines up with t=0 of the others
+
+Different frame sizes are scaled to a common height and padded.
+A verdict.json in a clone directory adds "PASS 4/4" or "FAIL 1/4" under its label.
+GIF warns above 8 MB; MP4 is H.264 yuv420p.
+`,
+	sheet: `Usage: motionclone sheet <refDir> <cloneDir> --out <dir>
+
+Writes <dir>/design-sheet.png: reference, clone and difference for the first frame,
+the last frame and each still stretch of the reference, labelled with time.
+Works for page and video references. Use it to compare the look, not the motion.
+`,
 	mcp: `Usage: motionclone mcp
 
-Starts the MCP server on stdio. Tools: capture, probe, draft_spec, verify, report.
+Starts the MCP server on stdio. Tools: capture, probe, draft_spec, verify, report, side_by_side, design_sheet.
 `,
 };

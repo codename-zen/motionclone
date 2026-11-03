@@ -4,6 +4,12 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { CaptureArgs } from "./cli/capture-args.ts";
 import { captureLines } from "./cli/capture-run.ts";
+import {
+	SheetArgs,
+	SideBySideArgs,
+	sheetLines,
+	sideBySideLines,
+} from "./cli/media-run.ts";
 import { runVerify, summarize } from "./cli/verify-run.ts";
 import { probeLines } from "./cli/video-args.ts";
 import { writeReport } from "./report/report.ts";
@@ -88,7 +94,7 @@ export function createServer(): McpServer {
 					.string()
 					.describe("spec.json path or the reference capture directory"),
 				cloneDir: z.string().describe("Clone capture directory"),
-				fidelity: z.enum(["motion", "pixel"]).optional(),
+				fidelity: z.enum(["motion", "look", "pixel"]).optional(),
 				pixelThreshold: z.number().optional(),
 				reducedClone: z
 					.string()
@@ -121,6 +127,26 @@ export function createServer(): McpServer {
 					await writeReport(verdict, join(dirname(verdict), "report.md"))
 				).trimEnd(),
 			),
+	);
+
+	server.registerTool(
+		"side_by_side",
+		{
+			description:
+				"Compose a reference capture and one or more clone captures into one labelled GIF or MP4. A verdict.json in a clone directory adds its PASS or FAIL line. Warns when a GIF is over 8 MB.",
+			inputSchema: SideBySideArgs.shape,
+		},
+		(args) => guarded(async () => (await sideBySideLines(args)).join("\n")),
+	);
+
+	server.registerTool(
+		"design_sheet",
+		{
+			description:
+				"Write one PNG with reference, clone and difference at the first frame, the last frame and each still stretch. Use it to compare layout, colour and type, then open the PNG.",
+			inputSchema: SheetArgs.shape,
+		},
+		(args) => guarded(async () => (await sheetLines(args)).join("\n")),
 	);
 
 	return server;

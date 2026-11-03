@@ -42,13 +42,15 @@ async function call(name: string, args: Record<string, unknown>) {
 const page = (name: string) => `${server.url}/fixtures/${name}/index.html`;
 
 describe("mcp server", () => {
-	it("lists the five tools", async () => {
+	it("lists the seven tools", async () => {
 		const { tools } = await client.listTools();
 		expect(tools.map((t) => t.name).sort()).toEqual([
 			"capture",
+			"design_sheet",
 			"draft_spec",
 			"probe",
 			"report",
+			"side_by_side",
 			"verify",
 		]);
 	});

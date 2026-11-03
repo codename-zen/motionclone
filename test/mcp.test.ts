@@ -7,6 +7,9 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { type StaticServer, serveRepo } from "./serve.ts";
 
+// Several captures in child processes; under a full parallel run this takes well over the 60 s default.
+const E2E_TIMEOUT = 180_000;
+
 const ROOT = resolve(import.meta.dirname, "..");
 let server: StaticServer;
 let tmp: string;
@@ -56,46 +59,52 @@ describe("mcp server", () => {
 		expect(r.text).toContain("--duration");
 	});
 
-	it("captures, drafts a spec and verifies compactly", async () => {
-		const ref = join(tmp, "ref");
-		const cap = await call("capture", {
-			url: page("css-fade-up-stagger"),
-			out: ref,
-			duration: 1500,
-			fps: 30,
-			track: [".card", "h1"],
-		});
-		expect(cap.isError).toBeFalsy();
-		expect(cap.text).toContain("captured 46 frames");
+	it(
+		"captures, drafts a spec and verifies compactly",
+		async () => {
+			const ref = join(tmp, "ref");
+			const cap = await call("capture", {
+				url: page("css-fade-up-stagger"),
+				out: ref,
+				duration: 1500,
+				fps: 30,
+				track: [".card", "h1"],
+			});
+			expect(cap.isError).toBeFalsy();
+			expect(cap.text).toContain("captured 46 frames");
 
-		const spec = await call("draft_spec", { captureDir: ref });
-		expect(spec.text).toContain(".card[0].opacity");
-		expect(spec.text.split("\n").length).toBeLessThan(40);
+			const spec = await call("draft_spec", { captureDir: ref });
+			expect(spec.text).toContain(".card[0].opacity");
+			expect(spec.text.split("\n").length).toBeLessThan(40);
 
-		const same = join(tmp, "same");
-		await call("capture", {
-			url: page("css-fade-up-stagger"),
-			out: same,
-			like: ref,
-		});
-		const pass = await call("verify", { spec: ref, cloneDir: same });
-		expect(pass.text).toMatch(/^PASS: \d+\/\d+ rows pass/);
-		expect(pass.text).toContain("verdict:");
+			const same = join(tmp, "same");
+			await call("capture", {
+				url: page("css-fade-up-stagger"),
+				out: same,
+				like: ref,
+			});
+			const pass = await call("verify", { spec: ref, cloneDir: same });
+			expect(pass.text).toMatch(/^PASS: \d+\/\d+ rows pass/);
+			expect(pass.text).toContain("verdict:");
 
-		const wrong = join(tmp, "wrong");
-		await call("capture", {
-			url: page("_variants/fade-item2-late"),
-			out: wrong,
-			like: ref,
-		});
-		const fail = await call("verify", { spec: ref, cloneDir: wrong });
-		expect(fail.text).toMatch(/^FAIL: \d+\/\d+ rows pass/);
-		expect(fail.text).toContain(".card[2]");
-		expect(fail.text.length).toBeLessThan(4000);
-		const sheet = fail.text.split("\n").find((l) => l.startsWith("sheet: "));
-		expect(existsSync(sheet?.slice(7) ?? "")).toBe(true);
+			const wrong = join(tmp, "wrong");
+			await call("capture", {
+				url: page("_variants/fade-item2-late"),
+				out: wrong,
+				like: ref,
+			});
+			const fail = await call("verify", { spec: ref, cloneDir: wrong });
+			expect(fail.text).toMatch(/^FAIL: \d+\/\d+ rows pass/);
+			expect(fail.text).toContain(".card[2]");
+			expect(fail.text.length).toBeLessThan(4000);
+			const sheet = fail.text.split("\n").find((l) => l.startsWith("sheet: "));
+			expect(existsSync(sheet?.slice(7) ?? "")).toBe(true);
 
-		const rep = await call("report", { verdict: join(wrong, "verdict.json") });
-		expect(rep.text).toContain("# motionclone verify: FAIL");
-	});
+			const rep = await call("report", {
+				verdict: join(wrong, "verdict.json"),
+			});
+			expect(rep.text).toContain("# motionclone verify: FAIL");
+		},
+		E2E_TIMEOUT,
+	);
 });

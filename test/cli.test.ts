@@ -7,6 +7,9 @@ import { promisify } from "node:util";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { type StaticServer, serveRepo } from "./serve.ts";
 
+// Several captures in child processes; under a full parallel run this takes well over the 60 s default.
+const E2E_TIMEOUT = 180_000;
+
 const run = promisify(execFile);
 const ROOT = resolve(import.meta.dirname, "..");
 const SRC = join(ROOT, "src", "cli.ts");
@@ -109,80 +112,84 @@ function suite(label: string, entry: string, runIf: boolean) {
 			expect(missing.stderr).toContain("not found");
 		});
 
-		it("captures, drafts a spec and verifies a --like clone and a wrong variant", async () => {
-			const ref = dir("ref");
-			const flags = ["--duration", "1500", "--fps", "30", "--track", TRACK];
-			const cap = await motionclone(
-				"capture",
-				page("css-fade-up-stagger"),
-				"--out",
-				ref,
-				...flags,
-			);
-			expect(cap.code, cap.stderr).toBe(0);
-			expect(cap.stdout).toContain("captured 46 frames");
+		it(
+			"captures, drafts a spec and verifies a --like clone and a wrong variant",
+			async () => {
+				const ref = dir("ref");
+				const flags = ["--duration", "1500", "--fps", "30", "--track", TRACK];
+				const cap = await motionclone(
+					"capture",
+					page("css-fade-up-stagger"),
+					"--out",
+					ref,
+					...flags,
+				);
+				expect(cap.code, cap.stderr).toBe(0);
+				expect(cap.stdout).toContain("captured 46 frames");
 
-			const spec = await motionclone("spec", ref);
-			expect(spec.code, spec.stderr).toBe(0);
-			expect(spec.stdout).toContain(".card[0].opacity");
-			expect(existsSync(join(ref, "spec.json"))).toBe(true);
+				const spec = await motionclone("spec", ref);
+				expect(spec.code, spec.stderr).toBe(0);
+				expect(spec.stdout).toContain(".card[0].opacity");
+				expect(existsSync(join(ref, "spec.json"))).toBe(true);
 
-			const same = dir("same");
-			const like = await motionclone(
-				"capture",
-				page("css-fade-up-stagger"),
-				"--like",
-				ref,
-				"--out",
-				same,
-			);
-			expect(like.code, like.stderr).toBe(0);
-			const refOpts = JSON.parse(
-				await readFile(join(ref, "capture.json"), "utf8"),
-			).options;
-			const likeOpts = JSON.parse(
-				await readFile(join(same, "capture.json"), "utf8"),
-			).options;
-			expect({ ...likeOpts, url: 0, outDir: 0 }).toEqual({
-				...refOpts,
-				url: 0,
-				outDir: 0,
-			});
+				const same = dir("same");
+				const like = await motionclone(
+					"capture",
+					page("css-fade-up-stagger"),
+					"--like",
+					ref,
+					"--out",
+					same,
+				);
+				expect(like.code, like.stderr).toBe(0);
+				const refOpts = JSON.parse(
+					await readFile(join(ref, "capture.json"), "utf8"),
+				).options;
+				const likeOpts = JSON.parse(
+					await readFile(join(same, "capture.json"), "utf8"),
+				).options;
+				expect({ ...likeOpts, url: 0, outDir: 0 }).toEqual({
+					...refOpts,
+					url: 0,
+					outDir: 0,
+				});
 
-			const pass = await motionclone("verify", ref, same);
-			expect(pass.code, pass.stdout).toBe(0);
-			expect(pass.stdout).toContain("# motionclone verify: PASS");
-			expect(existsSync(join(same, "verdict.json"))).toBe(true);
-			expect(existsSync(join(same, "report.md"))).toBe(true);
+				const pass = await motionclone("verify", ref, same);
+				expect(pass.code, pass.stdout).toBe(0);
+				expect(pass.stdout).toContain("# motionclone verify: PASS");
+				expect(existsSync(join(same, "verdict.json"))).toBe(true);
+				expect(existsSync(join(same, "report.md"))).toBe(true);
 
-			const wrong = dir("wrong");
-			await motionclone(
-				"capture",
-				page("_variants/fade-item2-late"),
-				"--like",
-				ref,
-				"--out",
-				wrong,
-			);
-			const fail = await motionclone("verify", join(ref, "spec.json"), wrong);
-			expect(fail.code, fail.stdout).toBe(1);
-			expect(fail.stdout).toContain("# motionclone verify: FAIL");
-			expect(fail.stdout).toContain(".card[2]");
-			expect(existsSync(join(wrong, "sheets"))).toBe(true);
+				const wrong = dir("wrong");
+				await motionclone(
+					"capture",
+					page("_variants/fade-item2-late"),
+					"--like",
+					ref,
+					"--out",
+					wrong,
+				);
+				const fail = await motionclone("verify", join(ref, "spec.json"), wrong);
+				expect(fail.code, fail.stdout).toBe(1);
+				expect(fail.stdout).toContain("# motionclone verify: FAIL");
+				expect(fail.stdout).toContain(".card[2]");
+				expect(existsSync(join(wrong, "sheets"))).toBe(true);
 
-			const json = await motionclone(
-				"verify",
-				ref,
-				wrong,
-				"--json",
-				"--out",
-				dir("out"),
-			);
-			expect(json.code).toBe(1);
-			expect(JSON.parse(json.stdout).summary.failed).toBeGreaterThan(0);
-			const rep = await motionclone("report", join(dir("out"), "verdict.json"));
-			expect(rep.stdout).toContain("# motionclone verify: FAIL");
-		});
+				const json = await motionclone(
+					"verify",
+					ref,
+					wrong,
+					"--json",
+					"--out",
+					dir("out"),
+				);
+				expect(json.code).toBe(1);
+				expect(JSON.parse(json.stdout).summary.failed).toBeGreaterThan(0);
+				const rep = await motionclone("report", join(dir("out"), "verdict.json"));
+				expect(rep.stdout).toContain("# motionclone verify: FAIL");
+			},
+			E2E_TIMEOUT,
+		);
 	});
 }
 

@@ -19,6 +19,8 @@ export interface Frame {
 	full: Plane;
 	half: Plane;
 	coarse: Plane;
+	/** Eighth resolution, for the wide search that re-acquires a lost element. */
+	tiny: Plane;
 }
 
 export interface Hit {
@@ -34,10 +36,12 @@ export interface Hit {
 }
 
 export const COARSE = 4;
+export const TINY = 8;
 
 export function pyramid(full: Plane): Frame {
 	const half = downsample(full, 2);
-	return { full, half, coarse: downsample(half, COARSE / 2) };
+	const coarse = downsample(half, COARSE / 2);
+	return { full, half, coarse, tiny: downsample(coarse, TINY / COARSE) };
 }
 
 export function gridOf(t: Float32Array, w: number, h: number): Grid {

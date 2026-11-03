@@ -2,6 +2,9 @@ import type { Plane } from "./luma.ts";
 import type { Rect } from "./match.ts";
 import type { Status } from "./quality.ts";
 
+/** Which reading placed the element: the template, its colour box, or both (agreeing or not); none when neither. */
+export type Method = "template" | "colour" | "both-agree" | "disagree" | "none";
+
 export interface RegionSample {
 	/** The position is measured: status found or faint. */
 	found: boolean;
@@ -18,6 +21,7 @@ export interface RegionSample {
 	/** Share of the patch's structure the model explains, scaled down when the model is near the noise, 0..1. */
 	quality: number;
 	status: Status;
+	method: Method;
 	/** Centroid of change against frame 0 inside the box, frame pixels; null when nothing changed. */
 	centroid: { x: number; y: number } | null;
 	/** Mean absolute luma change from the previous frame inside the box. */

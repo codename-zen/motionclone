@@ -1,12 +1,20 @@
 import { gaussian } from "./blur.ts";
 import type { Plane } from "./luma.ts";
-import { COARSE, type Frame, type Grid, gridOf, type Rect } from "./match.ts";
+import {
+	COARSE,
+	type Frame,
+	type Grid,
+	gridOf,
+	type Rect,
+	TINY,
+} from "./match.ts";
 
-export type LevelName = "full" | "half" | "coarse";
+export type LevelName = "full" | "half" | "coarse" | "tiny";
 export const FACTOR: Record<LevelName, number> = {
 	full: 1,
 	half: 2,
 	coarse: COARSE,
+	tiny: TINY,
 };
 const CACHE_SIZE = 48;
 // The pad beyond the window the blurred source needs: three sigmas plus the bilinear neighbour.

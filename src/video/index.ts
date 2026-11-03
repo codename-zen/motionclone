@@ -112,8 +112,8 @@ function element(t: RegionTrack, k: number, css: number): TrackedElement {
 		observed: {
 			position: s.found,
 			scale: s.status === "found",
-			blur: s.status === "found",
-			opacity: s.status !== "other",
+			blur: s.status === "found" && s.method !== "colour",
+			opacity: s.status !== "other" && s.method !== "colour",
 		},
 	};
 }

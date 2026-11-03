@@ -1,28 +1,22 @@
 import { fillSamples } from "./fill.ts";
-import { type Plane, readLuma } from "./luma.ts";
-import { type Frame, pyramid, type Rect } from "./match.ts";
-import { TemplateModel } from "./model.ts";
+import { type Plane, readFrame, readLuma } from "./luma.ts";
+import { pyramid } from "./match.ts";
+import { mergeEnds, rebase } from "./merge.ts";
+import { runPass } from "./pass.ts";
+import { pickRef, tighten } from "./regions.ts";
+import type { RegionSample, RegionTrack } from "./samples.ts";
+import type { Lock } from "./search.ts";
 import {
-	judge,
-	MIN_SHAPE_CONTRAST,
-	measureNoise,
-	type Status,
-} from "./quality.ts";
-import { type NamedRect, pickRef, tighten } from "./regions.ts";
-import {
-	changeStats,
-	type RegionSample,
-	type RegionTrack,
-	sampleBox,
-} from "./samples.ts";
-import {
-	clampScale,
-	type Lock,
-	MAX_BLUR,
-	type Pose,
-	place,
-	search,
-} from "./search.ts";
+	type End,
+	type Ends,
+	expand,
+	initState,
+	MARGIN,
+	type State,
+	type TrackRegionInput,
+} from "./state.ts";
+
+export type { TrackRegionInput } from "./state.ts";
 
 // Within these the element does not scale or blur (h264 noise), and the region is tracked again with them fixed.
 const SCALE_NOISE = 0.01;
@@ -30,136 +24,28 @@ const SCALE_NOISE = 0.01;
 export const MIN_BLUR = 1;
 // Consecutive frames read at each end to estimate compression noise.
 const NOISE_FRAMES = 4;
-// Context ring around the element so a flat-coloured element still has edges to match.
-const MARGIN = 6;
+// The other end is tracked only when its window shows this many noise deviations of structure.
+const MIN_STRUCTURE = 3;
 
-export interface TrackRegionInput extends NamedRect {
-	ref: "auto" | "first" | "last";
-}
+// The other end's track stops once both tracks found this many consecutive frames, or the main track this many.
+const LINK_FRAMES = 3;
+const MAIN_FRAMES = 8;
 
-const expand = (r: Rect, m: number, p: Plane): Rect => {
-	const x = Math.max(0, r.x - m);
-	const y = Math.max(0, r.y - m);
-	return {
-		x,
-		y,
-		w: Math.min(p.width, r.x + r.w + m) - x,
-		h: Math.min(p.height, r.y + r.h + m) - y,
-	};
-};
-
-interface State {
-	region: RegionTrack;
-	model: TemplateModel;
-	/** Box centre in the reference frame, and its offset from the window centre that scales with the element. */
-	home: { x: number; y: number };
-	offset: { x: number; y: number };
-	pose: Pose;
-	vel: Pose;
-	prevFound: boolean;
-	lock: Lock;
-	noise: number;
-}
-
-const isFound = (st: Status) => st === "found" || st === "faint";
-
-const still: Pose = { cx: 0, cy: 0, s: 0, blur: 0 };
-
-const shiftOf = (s: State, p: Pose) => ({
-	dx: p.cx + p.s * s.offset.x - s.home.x,
-	dy: p.cy + p.s * s.offset.y - s.home.y,
-});
-
-function step(s: State, f: Frame, k: number) {
-	const pred: Pose = {
-		cx: s.pose.cx + s.vel.cx,
-		cy: s.pose.cy + s.vel.cy,
-		s: clampScale(s.pose.s * Math.exp(s.vel.s)),
-		blur: Math.min(MAX_BLUR, Math.max(0, s.pose.blur + s.vel.blur)),
-	};
-	let m = search(f, s.model, pred, s.lock);
-	if (m.contrast < MIN_SHAPE_CONTRAST)
-		m = place(f, s.model, { ...m, s: s.pose.s, blur: s.pose.blur });
-	let j = judge(m, s.noise);
-	if (!isFound(j.status)) {
-		// The search may have strayed onto nearby content: judge what is at the expected place instead.
-		m = place(f, s.model, { ...pred, s: s.pose.s, blur: s.pose.blur });
-		j = judge(m, s.noise);
-	}
-	const { status, quality } = j;
-	const found = isFound(status);
-	Object.assign(s.region.samples[k] as RegionSample, {
-		found,
-		...shiftOf(s, m),
-		scale: m.s,
-		blur: m.blur,
-		ncc: m.ncc,
-		opacity: found ? Math.min(1, Math.max(0, m.contrast)) : 0,
-		quality: Math.round(quality * 1000) / 1000,
-		status,
-	});
-	if (found) {
-		const shaped = status === "found";
-		const next: Pose = {
-			cx: m.cx,
-			cy: m.cy,
-			s: shaped ? m.s : s.pose.s,
-			blur: shaped ? m.blur : s.pose.blur,
-		};
-		s.vel = s.prevFound
-			? {
-					cx: next.cx - s.pose.cx,
-					cy: next.cy - s.pose.cy,
-					s: Math.log(next.s / s.pose.s),
-					blur: next.blur - s.pose.blur,
-				}
-			: still;
-		s.pose = next;
-	} else s.vel = still;
-	s.prevFound = found;
-}
-
-function initState(
-	r: TrackRegionInput,
-	frames: number,
-	first: Plane,
-	last: Plane,
-	ends: Ends,
-	floor: number,
-	lock: Lock,
-): State {
-	const box = tighten(first, last, r, floor);
-	const win = expand(box, MARGIN, first);
-	const ref = r.ref === "auto" ? pickRef(first, last, win) : r.ref;
-	const samples: RegionSample[] = Array.from({ length: frames }, () => ({
-		found: false,
-		dx: 0,
-		dy: 0,
-		scale: 1,
-		blur: 0,
-		ncc: 0,
-		opacity: 0,
-		quality: 0,
-		status: "absent",
-		centroid: null,
-		energy: 0,
-	}));
-	const home = { x: box.x + box.w / 2, y: box.y + box.h / 2 };
-	const centre = { x: win.x + win.w / 2, y: win.y + win.h / 2 };
-	return {
-		region: { name: r.name, box, ref, samples },
-		model: new TemplateModel(ends.frames[ref], win),
-		home,
-		offset: { x: home.x - centre.x, y: home.y - centre.y },
-		pose: { cx: centre.x, cy: centre.y, s: 1, blur: 0 },
-		vel: still,
-		prevFound: false,
-		lock,
-		noise: measureNoise(ends.near[ref], win, floor),
-	};
+/** Whether the main track already covers the frames the other end's track reached at k. */
+function covered(o: State, main: State, k: number): boolean {
+	const step = o.region.ref === "last" ? 1 : -1;
+	const run = (n: number, both: boolean) =>
+		Array.from({ length: n }, (_, i) => k + i * step).every(
+			(j) =>
+				main.region.samples[j]?.found === true &&
+				(!both || o.region.samples[j]?.found === true),
+		);
+	return run(LINK_FRAMES, true) || run(MAIN_FRAMES, false);
 }
 
 const shapedOf = (smp: RegionSample[]) => smp.map((p) => p.status === "found");
+const foundCount = (s: State) => s.region.samples.filter((p) => p.found).length;
+const opposite = (e: End): End => (e === "first" ? "last" : "first");
 
 /** Fix scale or blur when they never leave their noise band, so that noise cannot leak into the position. */
 function lockOf(smp: RegionSample[]): Lock {
@@ -170,75 +56,38 @@ function lockOf(smp: RegionSample[]): Lock {
 	};
 }
 
-interface Ends {
-	first: Plane;
-	last: Plane;
-	frames: { first: Frame; last: Frame };
-	/** A few consecutive frames at each end, for the noise estimate. */
-	near: { first: Plane[]; last: Plane[] };
+function hasStructure(s: State): boolean {
+	const g = s.model.render("full", 1, 0);
+	return Math.sqrt(g.sumSq / (g.w * g.h)) >= MIN_STRUCTURE * s.noise;
 }
 
-/** Each state from its reference end of the clip towards the other end. */
-async function runPass(
+async function readEnds(
 	dir: string,
 	frames: number,
-	states: State[],
-	ends: Ends,
-	floor: number,
-) {
-	for (const ref of ["first", "last"] as const) {
-		const group = states.filter((s) => s.region.ref === ref);
-		if (group.length === 0) continue;
-		const order = Array.from({ length: frames }, (_, i) =>
-			ref === "first" ? i : frames - 1 - i,
-		);
-		let prev: { k: number; plane: Plane } | null = null;
-		for (const k of order) {
-			const plane =
-				k === 0
-					? ends.first
-					: k === frames - 1
-						? ends.last
-						: await readLuma(dir, k);
-			const f: Frame =
-				k === 0
-					? ends.frames.first
-					: k === frames - 1
-						? ends.frames.last
-						: pyramid(plane);
-			for (const s of group) {
-				step(s, f, k);
-				const box = sampleBox(s.region.box, {
-					...(s.region.samples[k] as RegionSample),
-					...shiftOf(s, s.pose),
-					scale: s.pose.s,
-				});
-				(s.region.samples[k] as RegionSample).centroid = changeStats(
-					plane,
-					ends.first,
-					box,
-					floor,
-				).centroid;
-				if (prev) {
-					const [later, earlier] =
-						prev.k > k ? [prev, plane] : [{ k, plane }, prev.plane];
-					const ls = s.region.samples[later.k] as RegionSample;
-					ls.energy = changeStats(
-						later.plane,
-						earlier,
-						sampleBox(s.region.box, ls),
-						floor,
-					).mean;
-				}
-			}
-			prev = { k, plane };
-		}
-	}
+	first: Plane,
+	last: Plane,
+): Promise<Ends> {
+	const n = Math.min(NOISE_FRAMES, frames);
+	const read = (ks: number[]) => Promise.all(ks.map((k) => readLuma(dir, k)));
+	return {
+		first,
+		last,
+		frames: { first: pyramid(first), last: pyramid(last) },
+		rgba: {
+			first: (await readFrame(dir, 0)).rgba,
+			last: (await readFrame(dir, frames - 1)).rgba,
+		},
+		near: {
+			first: await read([...Array(n).keys()]),
+			last: await read([...Array(n).keys()].map((i) => frames - n + i)),
+		},
+	};
 }
 
 /**
- * Track each region with scale and blur free; regions where either stays within noise
- * are tracked again with it fixed.
+ * Track each region from its reference end, and from the other end when frames were lost, then merge the two.
+ * When the reference is automatic, the end whose track found more frames leads.
+ * Regions where scale or blur stays within noise are tracked again with it fixed.
  */
 export async function trackRegions(
 	dir: string,
@@ -249,36 +98,70 @@ export async function trackRegions(
 	warnings: string[],
 ): Promise<RegionTrack[]> {
 	const { first, last } = planes;
-	const n = Math.min(NOISE_FRAMES, frames);
-	const read = (ks: number[]) => Promise.all(ks.map((k) => readLuma(dir, k)));
-	const ends: Ends = {
-		first,
-		last,
-		frames: { first: pyramid(first), last: pyramid(last) },
-		near: {
-			first: await read([...Array(n).keys()]),
-			last: await read([...Array(n).keys()].map((i) => frames - n + i)),
-		},
-	};
-	const init = (r: TrackRegionInput, lock: Lock) =>
-		initState(r, frames, first, last, ends, floor, lock);
+	const ends = await readEnds(dir, frames, first, last);
 	const free = { scale: false, blur: false };
-	const states = regions.map((r) => init(r, free));
-	await runPass(dir, frames, states, ends, floor);
+	const init = (r: TrackRegionInput, ref: End, lock: Lock) =>
+		initState(r, ref, frames, ends, floor, lock);
+	const main = regions.map((r) =>
+		init(
+			r,
+			r.ref === "auto"
+				? pickRef(
+						first,
+						last,
+						expand(tighten(first, last, r, floor), MARGIN, first),
+					)
+				: r.ref,
+			free,
+		),
+	);
+	await runPass(dir, frames, main, ends, floor);
+	const others = new Map<number, State>();
+	main.forEach((s, i) => {
+		if (foundCount(s) === frames) return;
+		const o = init(
+			regions[i] as TrackRegionInput,
+			opposite(s.region.ref),
+			free,
+		);
+		if (hasStructure(o)) others.set(i, o);
+	});
+	const mainOf = new Map([...others].map(([i, o]) => [o, main[i] as State]));
+	await runPass(dir, frames, [...others.values()], ends, floor, (o, k) =>
+		covered(o, mainOf.get(o) as State, k),
+	);
+	// Values stay relative to the end chosen for its structure, even when the other end's template led.
+	const measuredAt = new Map<number, End>();
+	for (const [i, o] of others)
+		if (
+			regions[i]?.ref === "auto" &&
+			foundCount(o) > foundCount(main[i] as State)
+		) {
+			measuredAt.set(i, (main[i] as State).region.ref);
+			others.set(i, main[i] as State);
+			main[i] = o;
+		}
 	const again = new Map<number, State>();
-	states.forEach((s, i) => {
+	main.forEach((s, i) => {
 		const lock = lockOf(s.region.samples);
 		if (lock.scale || lock.blur)
-			again.set(i, init(regions[i] as TrackRegionInput, lock));
+			again.set(i, init(regions[i] as TrackRegionInput, s.region.ref, lock));
 	});
 	await runPass(dir, frames, [...again.values()], ends, floor);
-	for (const [i, s] of again) states[i] = s;
-	for (const s of states) {
-		if (!s.region.samples.some((p) => p.found))
+	for (const [i, s] of again) main[i] = s;
+	for (const [i, o] of others) mergeEnds((main[i] as State).region, o.region);
+	for (const [i, ref] of measuredAt) rebase((main[i] as State).region, ref);
+	for (const s of main) {
+		const smp = s.region.samples;
+		if (!smp.some((p) => p.found))
 			warnings.push(
 				`region ${s.region.name}: the element was never found; its box stays at the region`,
 			);
-		fillSamples(s.region.samples, shapedOf(s.region.samples));
+		fillSamples(
+			smp,
+			shapedOf(smp),
+			smp.map((p) => p.status === "found" && p.method !== "colour"),
+		);
 	}
-	return states.map((s) => s.region);
+	return main.map((s) => s.region);
 }

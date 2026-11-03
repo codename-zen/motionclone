@@ -47,8 +47,26 @@ export function lumaOf(png: PNG): Plane {
 	return blur3({ width: png.width, height: png.height, data });
 }
 
+/** 8-bit RGBA pixels of a frame. */
+export interface Rgba {
+	width: number;
+	height: number;
+	data: Uint8Array;
+}
+
+export async function readFrame(
+	dir: string,
+	k: number,
+): Promise<{ luma: Plane; rgba: Rgba }> {
+	const png = PNG.sync.read(await readFile(framePng(dir, k)));
+	return {
+		luma: lumaOf(png),
+		rgba: { width: png.width, height: png.height, data: png.data },
+	};
+}
+
 export async function readLuma(dir: string, k: number): Promise<Plane> {
-	return lumaOf(PNG.sync.read(await readFile(framePng(dir, k))));
+	return (await readFrame(dir, k)).luma;
 }
 
 /** Mean of each f x f block; partial blocks at the edges are dropped. */

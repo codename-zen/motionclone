@@ -62,7 +62,7 @@ Each frame is searched near a constant-velocity prediction of all four values (s
 
 Scale is kept between 0.3 and 3.
 Scale and blur stay near the prediction instead of a free search over the whole range: a free search on frames where the element is invisible let a tiny, heavily blurred model lock onto nearby heading text and drift.
-The cost is that an element which reappears after a gap at a very different scale or blur is not found again.
+The cost is that an element which reappears after a gap at a very different scale or blur is not found by this search; the wide search in the next sections finds it again.
 A frame whose opacity proxy is under 0.2 gives its position but not its shape, so it is placed with the scale and blur of the last clear frame, and its scale and blur are later filled from clear frames like a lost position.
 Blur is searched up to 35 reference pixels, the top of the ladder; the prediction is clamped to the same scale and blur ranges.
 A region whose scale stays within 1 % of 1, or whose blur stays under one pixel, in every clear frame, is tracked a second time with that value fixed, because jitter in a free parameter leaks into the position: a translating card read 0.3 % scale jitter as a 0.3 px sideways move.
@@ -112,6 +112,45 @@ On notch-expand, captured at 60 fps and encoded at crf 18, with regions around t
 - tracking takes 2.5 s for 73 frames and two regions, against 2.0 s before.
   On the fade-up stagger and blur-scale-in fixtures every frame found before is still found, and `track.json` values are unchanged.
 
+## Decision: re-acquisition, both ends and colour
+
+A phone recording of a reward card that grows from a grid to the centre (scale 0.62 to 1 in about 310 ms while it moves, then a dimming backdrop and a cross-fade) lost the card on its first growing frame and never found it again.
+The per-frame scale change (about 3 % at 57 fps) and the darkening background around the card pushed the match below the quality gate, a lost frame did not move the search, and the region was never tightened because the dim changed every pixel in it.
+The expand-dim-reveal fixture reproduces it.
+
+Re-acquisition: when neither the prediction nor the expected place passes the quality gate, and the patch is `other` or the element was found on the previous frame, a wide search runs.
+It slides the model over the whole region (plus the context ring) at every scale from 0.3 to the largest that fits the region, in 10 % log steps, each at the smallest pyramid level (an eighth, a quarter, a half or full resolution) that keeps the template at least 8 pixels on its short side, at the last clear blur.
+The three best distinct placements are refined with the regular search and judged; only a `found` judgement is accepted, so false matches stay rejected by the same fidelity, slope and correlation rules.
+A failed wide search is repeated only after the region changed by a mean of one luma level at quarter resolution, so a static or empty stretch costs one search.
+
+Both ends: when the main track loses frames and the other end's window holds structure (its luma deviation at least 3 noise deviations), the region is also tracked from the other end with that end's template, backwards in time.
+It stops once both tracks found three consecutive frames, or the main track eight.
+Frames the main track did not find are filled from the other track, converted through the frames both found with the median scale ratio and the median offset between the two box centres (in units of the other track's scale); without such frames nothing is merged.
+With an automatic reference the end whose track found more frames leads, but values stay relative to the end picked for its structure (box, scale and blur rebased onto that end's frame when it was measured), so a growing card still reads 0.62 to 1 and not 1 to 1.6.
+
+Colour: a region gets a colour model when its element has distinctive colours.
+Candidates are 4-bit colour bins that cover at least 2 % of the reference window, taken at their mean colour.
+A candidate is kept when at most 0.5 % of the region at the other end lies within 42 (RGB distance) of it, when no other dominant colour of the window that fails that test lies within 42 of it, and when at least 80 % of its matches (within 28) fall inside the box the candidates form together.
+The model is used only when the kept colours fill at least half of their box and that box holds at least half of the window's luma variance, so a small coloured detail on a white card does not count.
+When the changed-content box covers at least 90 % of the region (the whole region changed, as under a dimming backdrop) and the colour box is under 80 % of it, the colour box at the reference end becomes the element box.
+Per frame, pixels within 28 of a set colour form a mask over the region; 4 px cells at least half matched form 8-connected components, and the largest one's box is narrowed to the rows and columns that hold at least 3 matching pixels and a tenth of the fullest one.
+The reading is valid when that box is at least 60 % as full as at the reference and its aspect is within 10 % of the reference; its scale is the square root of the area ratio, and its centre maps to the element box through the reference offset, so it follows the same box and transform conventions as the template.
+The template search starts from the colour pose when there is one, which also replaces the wide search.
+Each sample in `regions.json` carries `method`:
+- `template`: only the template measured the frame;
+- `both-agree`: the template and the colour box agree within 0.03 in log scale (scale only on `found` frames) and 3 px or 1.5 % of the box in centre; quality stays;
+- `disagree`: both measured but differ beyond that; the template values are kept and quality is halved;
+- `colour`: only the colour box measured the frame; status is `found`, scale and position are measured, blur is filled from template frames, opacity is written as 1 (a colour match needs a nearly opaque element) but not marked observed, and quality is the fill ratio against the reference;
+- `none`: neither found the element.
+
+On expand-dim-reveal captured at 57 fps, encoded at crf 18, with a region around the card's start and end boxes plus 12 px:
+- every frame is found: 58 `both-agree`, 47 `colour` (the dimmed and grown frames, 737 to 1544 ms), 10 `template` (the cross-fade, filled from the last-frame track);
+- the template alone follows the growth to scale 0.72 (719 ms), where the dim around the card breaks its context ring;
+- scale is within 0.004 of the page at every frame (it reads 0.621 for 0.624), the box centre x within 0.6 px;
+- the scale series fits a start of 647.5 ms (640 declared) and a duration of 305.9 ms (310 declared);
+- tracking takes 29 s for 115 frames of a 664x580 region, against 21 s before for a result that marked the card `other` on 88 frames.
+  The other video tests pass with unchanged tolerances; they take 61 s instead of 51 s.
+
 ## Limits
 
 - Uniform scale and Gaussian blur only: rotation, non-uniform scale, perspective and clip-path changes lower the correlation and are not measured; they read as reduced opacity or a lost element.
@@ -121,7 +160,7 @@ On notch-expand, captured at 60 fps and encoded at crf 18, with regions around t
 - Blur and fading both lower edge contrast; the model separates them by shape, but on a faint element (proxy under 0.2) neither scale nor blur is measured, and a blur measured while the element also fades can trade a little blur for opacity.
 - The quality thresholds are calibrated on h264 crf 18 with the default noise floor; heavier compression needs a higher `noiseFloor`, or true faint frames read as `other`.
 - An element whose region already holds a similar object at the expected place (a thumbnail swapped for the same artwork) still matches it; the check only rejects content the model does not explain.
-- An element that reappears after a gap far from its last clear pose is not found again, because a lost frame does not move the search.
+- An element that reappears after a gap far from its last clear pose is found again only by the wide search, which runs on busy frames that changed since its last failure, and only at the last clear blur.
 - Blur is measured up to about 35 reference pixels; at 16 to 20 px the estimate reads 4 to 6 % low.
 - An element that fades in from opacity 0 while it scales and unblurs shows its start values only after it becomes visible, and h264 hides the faintest frames.
   On the css-blur-scale-in fixture (opacity, `scale: 0.92` and `blur(12px)` in over 600 ms, `cubic-bezier(0.22, 1, 0.36, 1)`) at crf 18, the first frame with opacity 0.125 reads a contrast of 0.02 (0.125 on the lossless frames), so the video starts at blur 10.1 and scale 0.92 for the first card, and 6.8 px and 0.945 for the second.
@@ -131,6 +170,8 @@ On notch-expand, captured at 60 fps and encoded at crf 18, with regions around t
   So verifying such a video against a DOM clone fails on duration and distance; it is a limit of what the pixels hold plus the fit's sensitivity, not of tracking.
   ADR 0003 covers how spec drafting and verify now handle such partly observed rows.
 - Colour-only changes are invisible to the tracker, because it works on luma and ignores brightness scaling.
+- The colour box assumes a sharp, opaque element: blur or fading erodes its edges, so the reading shrinks or fails, and an element whose colours also appear elsewhere in the region, or that is partly covered, has no valid colour reading.
+- Merging the two ends needs frames both tracks found; a cross-fade between two different contents with no such frame keeps the other end's frames out.
 - Overlapping elements: when another moving element enters the template area, the match follows whichever dominates; declare tighter regions or crop.
 - Automatic blobs merge elements closer than about one cell plus the blur (about 6 px); declare regions in that case.
 - An element is unobservable while fully transparent; the extrapolation above covers entrances that move and fade together, not ones that move a long way before appearing.

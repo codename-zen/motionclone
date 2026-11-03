@@ -51,6 +51,25 @@ function spread(p: Plane, r: Rect): number {
 	return ss / n - (s / n) ** 2;
 }
 
+/** Share of the luma variance of `win` that lies inside `box`. */
+export function structureInside(p: Plane, win: Rect, box: Rect): number {
+	let sum = 0;
+	for (let y = win.y; y < win.y + win.h; y++)
+		for (let x = win.x; x < win.x + win.w; x++)
+			sum += p.data[y * p.width + x] as number;
+	const mean = sum / (win.w * win.h);
+	let all = 0;
+	let inside = 0;
+	for (let y = win.y; y < win.y + win.h; y++)
+		for (let x = win.x; x < win.x + win.w; x++) {
+			const d = ((p.data[y * p.width + x] as number) - mean) ** 2;
+			all += d;
+			if (x >= box.x && y >= box.y && x < box.x + box.w && y < box.y + box.h)
+				inside += d;
+		}
+	return all > 0 ? inside / all : 0;
+}
+
 /** The end frame that shows more structure inside the rect: that is where the element is visible. */
 export const pickRef = (
 	first: Plane,
@@ -58,7 +77,13 @@ export const pickRef = (
 	r: Rect,
 ): "first" | "last" => (spread(first, r) >= spread(last, r) ? "first" : "last");
 
-function components(mask: Uint8Array, w: number, h: number): Rect[] {
+/** Bounding boxes of 8-connected mask components with at least `min` cells, largest first. */
+export function components(
+	mask: Uint8Array,
+	w: number,
+	h: number,
+	min = MIN_BLOB_CELLS,
+): Rect[] {
 	const seen = new Uint8Array(mask.length);
 	const out: (Rect & { cells: number })[] = [];
 	for (let start = 0; start < mask.length; start++) {
@@ -88,7 +113,7 @@ function components(mask: Uint8Array, w: number, h: number): Rect[] {
 					stack.push(n);
 				}
 		}
-		if (cells >= MIN_BLOB_CELLS)
+		if (cells >= min)
 			out.push({ x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1, cells });
 	}
 	return out.sort((a, b) => b.cells - a.cells);

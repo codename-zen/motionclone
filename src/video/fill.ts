@@ -30,8 +30,12 @@ export function fillLost(v: number[], found: boolean[]): number[] {
 	return out;
 }
 
-/** Fill position over frames where the element was lost, and scale and blur over frames too faint to show them. */
-export function fillSamples(smp: RegionSample[], shaped: boolean[]): void {
+/** Fill position over frames where the element was lost, and scale and blur over frames that do not show them. */
+export function fillSamples(
+	smp: RegionSample[],
+	scaled: boolean[],
+	blurred: boolean[],
+): void {
 	const found = smp.map((p) => p.found);
 	const dx = fillLost(
 		smp.map((p) => p.dx),
@@ -43,11 +47,11 @@ export function fillSamples(smp: RegionSample[], shaped: boolean[]): void {
 	);
 	const logS = fillLost(
 		smp.map((p) => Math.log(p.scale)),
-		shaped,
+		scaled,
 	);
 	const blur = fillLost(
 		smp.map((p) => p.blur),
-		shaped,
+		blurred,
 	);
 	smp.forEach((p, k) => {
 		p.dx = dx[k] as number;

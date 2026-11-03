@@ -29,8 +29,8 @@ export interface Lock {
 	blur: boolean;
 }
 
-const MIN_SCALE = 0.3;
-const MAX_SCALE = 3;
+export const MIN_SCALE = 0.3;
+export const MAX_SCALE = 3;
 const COARSE_RADIUS = 10;
 const PLACE_RADIUS = 2;
 const FLAT_RADIUS = 16;

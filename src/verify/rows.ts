@@ -63,6 +63,12 @@ function unseenStartMetric(
 	};
 }
 
+export const isScale = (p: string) =>
+	p === "scale" || p === "scaleX" || p === "scaleY";
+
+export const logRatio = (from: number, to: number) =>
+	from > 0 && to > 0 ? Math.abs(Math.log(to / from)) : Math.abs(to - from);
+
 function verdictOf(
 	row: { id: string; selector: string; index: number },
 	kind: RowVerdict["kind"],
@@ -191,10 +197,18 @@ export function checkMotionRow(
 	}
 
 	const relative = row.relativeDistance !== null && w.relative !== null;
-	const wantDist = relative
-		? (row.relativeDistance as number)
-		: Math.abs(row.to - row.from);
-	const gotDist = relative ? (w.relative as number) : Math.abs(w.change);
+	// A scale is compared as a ratio: 1 -> 1.6 and 0.624 -> 1 are the same growth seen from different ends.
+	const ratio = isScale(row.property) && !relative;
+	const wantDist = ratio
+		? logRatio(row.from, row.to)
+		: relative
+			? (row.relativeDistance as number)
+			: Math.abs(row.to - row.from);
+	const gotDist = ratio
+		? logRatio(w.from, w.to)
+		: relative
+			? (w.relative as number)
+			: Math.abs(w.change);
 	if (!partial && wantDist > 0) {
 		const distance = metric(
 			wantDist,

@@ -70,10 +70,20 @@ export const overshootMessage = (row: SpecRow, m: Metric) =>
 	`${rowLabel(row)} overshoots ${num(m.got ?? 0)} % past its end value (want ${num(m.want ?? 0)} %)`;
 
 export function distanceMessage(row: SpecRow, c: Moving, m: Metric): string {
+	const pct = Math.round(Math.abs(m.diff ?? 0) * 100);
+	const way = (m.diff ?? 0) < 0 ? "short" : "too far";
+	if (
+		row.relativeDistance === null &&
+		["scale", "scaleX", "scaleY"].includes(row.property)
+	) {
+		const factor = (a: number, b: number) =>
+			num(Math.max(a, b) / Math.min(a, b));
+		const w = c.motion.window;
+		return `${rowLabel(row)} grows ${factor(w.from, w.to)}x (want ${factor(row.from, row.to)}x, ${pct} % ${way})`;
+	}
 	const unit = unitOf(row.property);
 	const want = Math.abs(row.to - row.from);
 	const got = Math.abs(c.motion.window.change);
-	const pct = Math.round(Math.abs(m.diff ?? 0) * 100);
 	const relative =
 		row.relativeDistance !== null ? ", relative to its size" : "";
 	return `${rowLabel(row)} moves ${num(got)}${unit} (want ${num(want)}${unit}, ${pct} % ${(m.diff ?? 0) < 0 ? "short" : "too far"}${relative})`;

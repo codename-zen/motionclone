@@ -3,7 +3,12 @@ import type { Plane, Rgba } from "./luma.ts";
 import type { Frame, Rect } from "./match.ts";
 import { TemplateModel } from "./model.ts";
 import { measureNoise, type Status } from "./quality.ts";
-import { type NamedRect, structureInside, tighten } from "./regions.ts";
+import {
+	type NamedRect,
+	pickRef,
+	structureInside,
+	tighten,
+} from "./regions.ts";
 import type { RegionSample, RegionTrack } from "./samples.ts";
 import type { Lock, Pose } from "./search.ts";
 
@@ -75,7 +80,8 @@ const areaOf = (r: Rect) => r.w * r.h;
 
 /**
  * The changed content in the region, and the element's colour model when its colours hold most of that content's
- * structure; the colour box becomes the element box when the whole region changed, a dimming backdrop for instance.
+ * structure; the colour box becomes the element box when the element persists at both ends, or when the whole
+ * region changed, a dimming backdrop for instance.
  */
 export function elementBox(
 	r: Rect,
@@ -92,9 +98,21 @@ export function elementBox(
 			: null;
 	const replace =
 		colour &&
-		areaOf(tight) >= UNTIGHTENED * areaOf(r) &&
-		areaOf(colour.box) < SMALLER * areaOf(tight);
+		(colour.otherBox !== null ||
+			(areaOf(tight) >= UNTIGHTENED * areaOf(r) &&
+				areaOf(colour.box) < SMALLER * areaOf(tight)));
 	return { box: replace ? colour.box : tight, colour };
+}
+
+/**
+ * The automatic reference end: for an element whose colours persist at both ends, the end where it is larger,
+ * so it has the most pixels and a grow reads towards 1; otherwise the end with more structure.
+ */
+export function autoRef(r: Rect, ends: Ends, floor: number): End {
+	const tight = tighten(ends.first, ends.last, r, floor);
+	const c = colourModel(ends.rgba.first, ends.rgba.last, tight, r);
+	if (c?.otherBox) return areaOf(c.otherBox) > areaOf(c.box) ? "last" : "first";
+	return pickRef(ends.first, ends.last, expand(tight, MARGIN, ends.first));
 }
 
 export function initState(

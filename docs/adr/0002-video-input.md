@@ -130,9 +130,20 @@ With an automatic reference the end whose track found more frames leads, but val
 
 Colour: a region gets a colour model when its element has distinctive colours.
 Candidates are 4-bit colour bins that cover at least 2 % of the reference window, taken at their mean colour.
-A candidate is kept when at most 0.5 % of the region at the other end lies within 42 (RGB distance) of it, when no other dominant colour of the window that fails that test lies within 42 of it, and when at least 80 % of its matches (within 28) fall inside the box the candidates form together.
+Two cases are tried, a persistent element first, then a content swap.
+Persistent element: the same element is at both ends, at any size and place.
+A candidate leads when, at each end, its pixels (within 28) form one patch and at most 0.5 % of the region outside that patch's box (grown by one 4 px cell) lies within 42 of it.
+The patch is the largest 8-connected group of cells at least a quarter matched, bridged across gaps of up to two cells, so a colour broken up by a pattern still spans the whole element.
+The other candidates join when at least 80 % of their matches at the reference end fall inside the leading colours' box and they are just as rare outside that box at both ends; this is how a darker pattern joins a solid colour.
+The kept colours must fill at least half of their box at both ends, the two boxes must have the same aspect within 10 %, and neither box may reach all four sides of the region (that is a background around something, not an element).
+The rarity rule is local on purpose: a card that grows to fill most of the region is common in the region at its expanded end, but rare around itself.
+Content swap: a candidate is kept when at most 0.5 % of the region at the other end lies within 42 (RGB distance) of it, when no other dominant colour of the window that fails that test lies within 42 of it, and when at least 80 % of its matches (within 28) fall inside the box the candidates form together.
+In both cases a candidate within 42 of a dominant colour that was not kept is dropped, because it would match that background too.
 The model is used only when the kept colours fill at least half of their box and that box holds at least half of the window's luma variance, so a small coloured detail on a white card does not count.
-When the changed-content box covers at least 90 % of the region (the whole region changed, as under a dimming backdrop) and the colour box is under 80 % of it, the colour box at the reference end becomes the element box.
+For a persistent element the colour box at the reference end becomes the element box.
+For a content swap it does so when the changed-content box covers at least 90 % of the region (the whole region changed, as under a dimming backdrop) and the colour box is under 80 % of it.
+With an automatic reference, a region whose element persists in colour at both ends uses the end where the element is larger: the template has the most pixels there, and a grow reads towards 1 as CSS writes it (0.62 to 1, not 1 to 1.6).
+Other regions keep the end with more structure.
 Per frame, pixels within 28 of a set colour form a mask over the region; 4 px cells at least half matched form 8-connected components, and the largest one's box is narrowed to the rows and columns that hold at least 3 matching pixels and a tenth of the fullest one.
 The reading is valid when that box is at least 60 % as full as at the reference and its aspect is within 10 % of the reference; its scale is the square root of the area ratio, and its centre maps to the element box through the reference offset, so it follows the same box and transform conventions as the template.
 The template search starts from the colour pose when there is one, which also replaces the wide search.
@@ -150,6 +161,18 @@ On expand-dim-reveal captured at 57 fps, encoded at crf 18, with a region around
 - the scale series fits a start of 647.5 ms (640 declared) and a duration of 305.9 ms (310 declared);
 - tracking takes 29 s for 115 frames of a 664x580 region, against 21 s before for a result that marked the card `other` on 88 frames.
   The other video tests pass with unchanged tolerances; they take 61 s instead of 51 s.
+
+A phone screen recording (816x1080 after crop, 57 fps, h264) showed a limit of the first colour rule: a solid blue card with a darker pattern, in a 2x2 grid of colourful tiles, grows from 347 to 556 px wide (scale 0.624 to 1 from its top edge, 310 ms from 640 ms, material standard) while it moves right and a backdrop dims around it.
+With a region covering the start and end boxes the card was not found on its first 45 frames and the drafted scale row read 0.847 to 1 from 712 ms, while a plain bounding box of the blue pixels measured it exactly.
+No colour model was built, because the blue covers most of the region at the expanded end, so it was not rare at the other end.
+The expand-in-grid fixture reproduces it: the same geometry, timing and dim (which does not cover the card), with gradient and shape tiles and text around the card.
+Captured at 57 fps, encoded at crf 18, with a region of the start and end boxes plus 6 px (neighbour tiles inside):
+- before: the reference was the first end, 39 of 79 frames found, all from the template, and no scale row was drafted;
+- now: the reference is the last end and every frame is found: 44 `colour` (the static grid and the first growth frames, up to scale 0.83) and 35 `both-agree`;
+- scale is within 0.0022 of the page at every frame, and the series fits a start of 648.3 ms (640 declared) and a duration of 299.9 ms (310 declared);
+- the drafted scale row reads 0.6225 to 1, from 640.5 ms over 307.5 ms, with the material standard curve;
+- with the reference set to the first end, the colour model is refused there (the small card holds 35 % of the region's luma variance), the last-end track fills the frames through the merge, and scale reads 1.606 at the end against 1.603 on the page;
+- tracking takes 8 to 12 s for 79 frames, and expand-dim-reveal measures exactly as above.
 
 ## Limits
 
@@ -169,6 +192,7 @@ On expand-dim-reveal captured at 57 fps, encoded at crf 18, with a region around
   Even a lossless encode fits 370 to 420 ms, because small opacity proxy deviations (up to 0.05 mid-move) are enough to change the fit.
   So verifying such a video against a DOM clone fails on duration and distance; it is a limit of what the pixels hold plus the fit's sensitivity, not of tracking.
   ADR 0003 covers how spec drafting and verify now handle such partly observed rows.
+- The opacity proxy also reads the context ring around the element, so a background that changes around an opaque element lowers it: on expand-in-grid the first template frame under the fading dim reads 0.90, and the draft holds an opacity row from 0.9 to 1 that the page does not have.
 - Colour-only changes are invisible to the tracker, because it works on luma and ignores brightness scaling.
 - The colour box assumes a sharp, opaque element: blur or fading erodes its edges, so the reading shrinks or fails, and an element whose colours also appear elsewhere in the region, or that is partly covered, has no valid colour reading.
 - Merging the two ends needs frames both tracks found; a cross-fade between two different contents with no such frame keeps the other end's frames out.

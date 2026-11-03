@@ -1,0 +1,59 @@
+{
+	"name": "expand-in-grid",
+	"description": "A blue card with a darker pattern sits in a 2x2 grid of colourful tiles, then expands to the centre: scale 0.624->1 from its top edge (310 ms, material standard, 640 ms) while it moves right (translateX -188.5px->0, 258 ms, ease, 674 ms). A backdrop dims the tiles but not the card (opacity 0->0.78, 272 ms, ease, 650 ms). Models a persistent element whose colours fill most of the region at its expanded end.",
+	"viewport": {
+		"width": 816,
+		"height": 1080
+	},
+	"trigger": {
+		"type": "load"
+	},
+	"captureMs": 1400,
+	"rows": [
+		{
+			"selector": ".card",
+			"index": 0,
+			"property": "scale",
+			"from": 0.624,
+			"to": 1,
+			"startMs": 640,
+			"durationMs": 310,
+			"easing": {
+				"type": "cubic-bezier",
+				"p": [0.4, 0, 0.2, 1]
+			},
+			"iterations": 1,
+			"source": "css-animation"
+		},
+		{
+			"selector": ".card",
+			"index": 0,
+			"property": "translateX",
+			"from": -188.5,
+			"to": 0,
+			"startMs": 674,
+			"durationMs": 258,
+			"easing": {
+				"type": "cubic-bezier",
+				"p": [0.25, 0.1, 0.25, 1]
+			},
+			"iterations": 1,
+			"source": "css-animation"
+		},
+		{
+			"selector": ".dim",
+			"index": 0,
+			"property": "opacity",
+			"from": 0,
+			"to": 0.78,
+			"startMs": 650,
+			"durationMs": 272,
+			"easing": {
+				"type": "cubic-bezier",
+				"p": [0.25, 0.1, 0.25, 1]
+			},
+			"iterations": 1,
+			"source": "css-animation"
+		}
+	]
+}

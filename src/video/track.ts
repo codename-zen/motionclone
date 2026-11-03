@@ -3,15 +3,13 @@ import { type Plane, readFrame, readLuma } from "./luma.ts";
 import { pyramid } from "./match.ts";
 import { mergeEnds, rebase } from "./merge.ts";
 import { runPass } from "./pass.ts";
-import { pickRef, tighten } from "./regions.ts";
 import type { RegionSample, RegionTrack } from "./samples.ts";
 import type { Lock } from "./search.ts";
 import {
+	autoRef,
 	type End,
 	type Ends,
-	expand,
 	initState,
-	MARGIN,
 	type State,
 	type TrackRegionInput,
 } from "./state.ts";
@@ -97,23 +95,12 @@ export async function trackRegions(
 	floor: number,
 	warnings: string[],
 ): Promise<RegionTrack[]> {
-	const { first, last } = planes;
-	const ends = await readEnds(dir, frames, first, last);
+	const ends = await readEnds(dir, frames, planes.first, planes.last);
 	const free = { scale: false, blur: false };
 	const init = (r: TrackRegionInput, ref: End, lock: Lock) =>
 		initState(r, ref, frames, ends, floor, lock);
 	const main = regions.map((r) =>
-		init(
-			r,
-			r.ref === "auto"
-				? pickRef(
-						first,
-						last,
-						expand(tighten(first, last, r, floor), MARGIN, first),
-					)
-				: r.ref,
-			free,
-		),
+		init(r, r.ref === "auto" ? autoRef(r, ends, floor) : r.ref, free),
 	);
 	await runPass(dir, frames, main, ends, floor);
 	const others = new Map<number, State>();

@@ -17,6 +17,7 @@ import { crossCheck } from "./cross-check.ts";
 import { matchDeclared, type Timing } from "./declared.ts";
 import { curveDeviation } from "./deviation.ts";
 import { candidateEasing, easingLabel } from "./easing.ts";
+import { draftLookOf } from "./look.ts";
 import {
 	elementKey,
 	fitMotion,
@@ -233,6 +234,7 @@ export async function draftSpec(
 					"does not move in the reference: the rebuild must keep it still",
 				],
 			})),
+		look: await draftLookOf(dir, cap.clip),
 	});
 	if (write) await writeFile(join(dir, "spec.json"), json(spec));
 	return spec;

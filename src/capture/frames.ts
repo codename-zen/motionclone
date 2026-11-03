@@ -49,7 +49,7 @@ export async function writeFrame(
 	crop: ClipRect,
 	framesDir: string,
 	index: number,
-): Promise<void> {
+): Promise<Buffer> {
 	const png = await page.screenshot({
 		clip: crop,
 		animations: "allow",
@@ -61,6 +61,7 @@ export async function writeFrame(
 		join(framesDir, `${String(index).padStart(4, "0")}.png`),
 		png,
 	);
+	return png;
 }
 
 // Reports each tracked element once, at the first frame its box is not fully inside the crop.

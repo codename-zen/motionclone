@@ -1,5 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { type Metric, type RowVerdict, Verdict } from "../verify/schema.ts";
+import { lookFixes, lookLines } from "./look.ts";
 
 const cell = (m: Metric | undefined, digits = 0): string => {
 	if (!m || m.want === null || m.got === null) return "";
@@ -120,12 +121,13 @@ export function renderReport(v: Verdict): string {
 	out.push(
 		...advisoryLines(v.rows.filter((r) => r.advisory !== null)),
 		...section("Partly observed", partlyObservedLines(v.rows)),
-		...section(
-			"Fix",
-			checked
+		...section("Fix", [
+			...checked
 				.filter((r) => !r.pass)
 				.flatMap((r) => r.failures.map((f) => `- ${f}`)),
-		),
+			...lookFixes(v.look).map((f) => `- ${f}`),
+		]),
+		...section("Look", lookLines(v.look)),
 	);
 	const p = v.pixel;
 	if (p)

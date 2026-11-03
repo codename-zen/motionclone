@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { Trigger } from "../capture/options.ts";
 import { PROPERTIES } from "../measure/series.ts";
+import { LookSpec } from "./look-schema.ts";
 
 export const SPEC_VERSION = 1;
 export const PROGRESS = "progress";
@@ -136,6 +137,8 @@ export const SpecFile = z.object({
 	meta: SpecMeta,
 	rows: z.array(SpecRow),
 	still: z.array(StillEntry),
+	/** Design facts of the reference, checked by look and pixel fidelity; null in older spec files. */
+	look: LookSpec.nullable().default(null),
 });
 
 export type Easing = z.output<typeof Easing>;

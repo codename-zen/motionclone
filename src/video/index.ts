@@ -2,6 +2,7 @@ import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import type { TrackedElement, TrackFrame } from "../capture/types.ts";
+import { writeVideoLook } from "../look/video.ts";
 import {
 	cssPerFramePx,
 	frameTimeMs,
@@ -197,6 +198,7 @@ export async function captureVideo(
 		json({ cssPerFramePx: css, regions: tracks }),
 	);
 	await writeVideoCaptureFile(ex, { track: names, warnings });
+	await writeVideoLook(dir);
 	return {
 		outDir: dir,
 		frames: ex.frames,

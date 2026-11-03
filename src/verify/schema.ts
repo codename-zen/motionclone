@@ -48,6 +48,55 @@ export const PixelResult = z.object({
 	skipped: z.string().nullable(),
 });
 
+export const LookRowVerdict = z.object({
+	id: z.string(),
+	label: z.string(),
+	measure: z.string(),
+	method: z.enum(["style", "pixels"]),
+	pass: z.boolean(),
+	want: z.string(),
+	/** Null when the clone has nothing to measure. */
+	got: z.string().nullable(),
+	/** CIEDE2000 for colours, relative error for sizes, worst error over its tolerance for boxes. */
+	diff: z.number().nullable(),
+	tol: z.number(),
+	unit: z.enum(["deltaE", "relative", "tolerance"]),
+	/** A fix instruction with both numbers when failing; what matched when passing. */
+	message: z.string(),
+});
+
+export const StructureFrame = z.object({
+	label: z.enum(["first", "plateau", "last"]),
+	frame: z.number().int(),
+	t: z.number(),
+	ssim: z.number(),
+	pass: z.boolean(),
+});
+
+/** SSIM of blurred grayscale rest frames: layout and proportions, not words or images. */
+export const StructureResult = z.object({
+	blurPx: z.number(),
+	threshold: z.number(),
+	frames: z.array(StructureFrame),
+	minSsim: z.number().nullable(),
+	pass: z.boolean(),
+});
+
+export const LookResult = z.object({
+	source: z.enum(["page", "video"]).nullable(),
+	/** True for look and pixel fidelity: failures fail the verdict. */
+	enforced: z.boolean(),
+	rows: z.array(LookRowVerdict),
+	structure: StructureResult.nullable(),
+	summary: z.object({
+		rows: z.number().int(),
+		passed: z.number().int(),
+		failed: z.number().int(),
+	}),
+	pass: z.boolean(),
+	skipped: z.string().nullable(),
+});
+
 export const Guardrail = z.object({
 	rule: z.enum(["layout-property", "ease-in-entrance", "reduced-motion"]),
 	target: z.string(),
@@ -90,10 +139,12 @@ export const Verdict = z.object({
 	version: z.literal(VERDICT_VERSION),
 	referenceDir: z.string(),
 	cloneDir: z.string(),
-	fidelity: z.enum(["motion", "pixel"]),
+	fidelity: z.enum(["motion", "look", "pixel"]),
 	setupErrors: z.array(z.string()),
 	rows: z.array(RowVerdict),
 	pixel: PixelResult.nullable(),
+	/** Look rows and the structure score; null for motion fidelity and in older verdicts. */
+	look: LookResult.nullable().default(null),
 	warnings: z.array(Guardrail),
 	/** Null when setup errors stopped the comparison. */
 	coverage: Coverage.nullable().default(null),
@@ -112,6 +163,10 @@ export type RowVerdict = z.output<typeof RowVerdict>;
 export type PixelFrame = z.output<typeof PixelFrame>;
 export type PixelResult = z.output<typeof PixelResult>;
 export type Guardrail = z.output<typeof Guardrail>;
+export type LookRowVerdict = z.output<typeof LookRowVerdict>;
+export type StructureFrame = z.output<typeof StructureFrame>;
+export type StructureResult = z.output<typeof StructureResult>;
+export type LookResult = z.output<typeof LookResult>;
 export type CoverageWarning = z.output<typeof CoverageWarning>;
 export type Coverage = z.output<typeof Coverage>;
 export type Verdict = z.output<typeof Verdict>;

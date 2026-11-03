@@ -1,6 +1,7 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
+import { createLookRecorder } from "../look/capture.ts";
 import { openSession } from "./browser.ts";
 import { startCdpRecorder } from "./cdp-animations.ts";
 import { createVirtualClock, installClock } from "./clock.ts";
@@ -128,6 +129,7 @@ export async function captureMotion(
 		// Fixed once, before the first recorded frame: the pre-roll is idle by design, so this equals the trigger-time box.
 		const crop = await resolveCrop(page, opts.clip, opts.viewport, warnings);
 		const watchCrop = createCropWatcher(crop, warnings);
+		const look = createLookRecorder(page, opts, crop);
 		const frames: TrackFrame[] = [];
 		const truncatedSelectors = new Set<string>();
 		let actions: TriggerAction[] = [];
@@ -159,8 +161,13 @@ export async function captureMotion(
 				scrollY: sample.scrollY,
 				elements: sample.elements,
 			});
-			await writeFrame(page, crop, framesDir, frame);
+			await look.frame(
+				frame,
+				t,
+				await writeFrame(page, crop, framesDir, frame),
+			);
 		}
+		await look.finish(outDir, frames, warnings);
 		if (actions.length > 0)
 			warnings.push(
 				`${actions.length} trigger steps fall after the capture window and were not run`,

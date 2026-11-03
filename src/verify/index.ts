@@ -9,6 +9,7 @@ import { type CloneMotion, indexClone, measureClone } from "./clone.ts";
 import { checkCoverage } from "./coverage.ts";
 import { evidenceOf } from "./evidence.ts";
 import { guardrails } from "./guardrails.ts";
+import { verifyLook } from "./look.ts";
 import {
 	type MapEntry,
 	parseMap,
@@ -36,10 +37,17 @@ import {
 import { isVideoCapture, setupErrors } from "./setup.ts";
 
 export interface VerifyOptions {
-	/** "pixel" also fails on rest-frame pixel differences above the threshold. */
-	fidelity?: "motion" | "pixel";
+	/**
+	 * "look" also fails on look rows (colours, type sizes, boxes) and the structure score;
+	 * "pixel" adds rest-frame pixel differences above the threshold to that.
+	 */
+	fidelity?: "motion" | "look" | "pixel";
 	/** Mean mismatch fraction allowed on rest frames. */
 	pixelThreshold?: number;
+	/** Blur of the look structure score, CSS px; defaults to the spec's. */
+	lookBlurPx?: number;
+	/** Lowest blurred-grayscale SSIM per rest frame; defaults to the spec's. */
+	structureThreshold?: number;
 	/** A second clone capture taken with reducedMotion "reduce", for the reduced-motion guardrail. */
 	reducedClone?: string;
 	/**
@@ -84,11 +92,12 @@ export async function verify(
 	const errors = setupErrors(spec.meta, refCap, cloneCap, map);
 	if (video && fidelity === "pixel")
 		errors.push(
-			"pixel fidelity compares two page captures; use motion fidelity against a video reference",
+			"pixel fidelity compares two page captures; use look fidelity against a video reference",
 		);
 	const rows: RowVerdict[] = [];
 	let pixel: Verdict["pixel"] = null;
 	let coverage: Coverage | null = null;
+	let look: Verdict["look"] = null;
 	if (errors.length === 0) {
 		const renamed = renameTrack(cloneTrack, map);
 		const idx = indexClone(renamed, renameAnimations(cloneAnimations, map));
@@ -143,6 +152,23 @@ export async function verify(
 					threshold,
 				});
 		coverage = await checkCoverage(spec, ref, refTrack, refCap.clip, video);
+		if (fidelity !== "motion")
+			look = await verifyLook(
+				{
+					spec,
+					refDir: ref,
+					cloneDir: clone,
+					refCap,
+					cloneCap,
+					cloneTrack: renamed,
+					map,
+				},
+				{
+					enforced: true,
+					blurPx: opts.lookBlurPx,
+					structureThreshold: opts.structureThreshold,
+				},
+			);
 	}
 	const checked = rows.filter((r) => r.advisory === null);
 	const passed = checked.filter((r) => r.pass).length;
@@ -154,6 +180,7 @@ export async function verify(
 		setupErrors: errors,
 		rows,
 		pixel,
+		look,
 		warnings: errors.length
 			? []
 			: await guardrails(clone, { reducedClone: opts.reducedClone }),
@@ -167,7 +194,8 @@ export async function verify(
 		pass:
 			errors.length === 0 &&
 			passed === checked.length &&
-			(pixel?.pass ?? false),
+			(pixel?.pass ?? false) &&
+			(look?.pass ?? true),
 	});
 	if (opts.outDir !== false)
 		await writeFile(join(opts.outDir ?? clone, "verdict.json"), json(verdict));

@@ -48,6 +48,39 @@ motionclone capture http://localhost:5173 --like ref --track ".card" --out mine
 motionclone verify ref mine --map card=.card
 ```
 
+## Side by side
+
+```sh
+motionclone side-by-side ref mine --out compare.gif --labels "Reference,Rebuild"
+motionclone side-by-side ref mine-a mine-b --out compare.mp4 --from 0 --to 2000 --crop 0,0,800,600
+```
+
+- The first directory is the reference, the others are rebuilds, left to right.
+- It works with page captures and video captures.
+  Frames of different sizes are scaled to the same height and padded.
+- Times line up on t=0 of each capture.
+  `--offset "0,120"` moves a capture's clock, in ms, one value per input.
+- `--from` and `--to` pick the range in ms, `--fps` the frame rate, `--width` the largest picture width (default 1280).
+- `--crop x,y,w,h` cuts every input the same way, or repeat it once per input.
+  Use `-` to keep one input whole.
+- A `verdict.json` in a rebuild directory adds "PASS 4/4" in green or "FAIL 1/4" in red under its label.
+  Run `verify` first.
+- A GIF over 8 MB prints a warning.
+  Lower `--width` or `--fps`, cut the range, or write an `.mp4`.
+- The MCP tool is `side_by_side`.
+
+## Design sheet
+
+```sh
+motionclone sheet ref mine --out design
+```
+
+- Writes `design/design-sheet.png`: reference, rebuild and difference for the first frame, the last frame and each still stretch of the reference.
+- Use it to compare layout, colours and type sizes before you work on motion.
+- It works for page and video references.
+  The rebuild is scaled to the size of the reference.
+- The MCP tool is `design_sheet`.
+
 ## What verify writes
 
 - `verdict.json`: every row with its numbers.
@@ -66,19 +99,27 @@ The report also has these sections:
 - **Advisory**: rows with weak evidence.
   They are shown with their numbers but never fail the result.
 
+With `--fidelity look`, verify also checks the design: page and region backgrounds, text and accent colours, type sizes, radii and the position of large blocks, plus a structure score on blurred still frames.
+Different words or images are fine; different colours, sizes or layout are not.
+The **Look** section names each value that is off and the value to use.
+
 `progress` rows check how an element's look changes, such as a fade, a dim or a cross-fade.
 They are measured from pixels in the element's box, in the reference and in your version the same way.
 Their timing must match within one frame plus 20 ms, and their curve is also compared on the same clock.
 
 ## Default tolerances
 
-| Check                          | Tolerance            |
-| ------------------------------ | -------------------- |
-| Start, end, duration           | ±80 ms               |
-| Gap between siblings (stagger) | ±40 ms               |
-| Easing curve                   | 0.05 of the motion   |
-| Distance                       | ±10 %                |
-| Overshoot                      | ±5 percentage points |
+| Check                          | Tolerance             |
+| ------------------------------ | --------------------- |
+| Start, end, duration           | ±80 ms                |
+| Gap between siblings (stagger) | ±40 ms                |
+| Easing curve                   | 0.05 of the motion    |
+| Distance                       | ±10 %                 |
+| Overshoot                      | ±5 percentage points  |
+| Colour (look)                  | ΔE 6, background ΔE 3 |
+| Size (look)                    | ±8 %                  |
+| Block position (look)          | ±3 % of the screen    |
+| Structure (look)               | blurred SSIM 0.9      |
 
 ## Limits
 

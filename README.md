@@ -58,10 +58,14 @@ motionclone capture http://localhost:5173 --like ref --out mine
 
 # 4. Compare
 motionclone verify ref mine
+
+# 5. Show both side by side
+motionclone side-by-side ref mine --out compare.gif --labels "Reference,Rebuild"
 ```
 
 `verify` exits with 0 when every row matches and 1 when something is off.
 It also saves images of the failing moments, with the reference and your version side by side.
+`side-by-side` makes a labelled GIF or MP4 of whole captures, with the verify result under each label.
 
 The reference can also be a screen recording or a gif.
 See the [guide](docs/guide.md) for video, triggers like hover and scroll, cookie banners and logged-in pages.

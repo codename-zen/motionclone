@@ -12,8 +12,8 @@ Never copy assets, fonts, images or source from the reference page.
 
 ## Tools
 
-CLI: `motionclone capture | probe | spec | verify | report` (or `npx motionclone ...`).
-MCP: the `capture`, `probe`, `draft_spec`, `verify` and `report` tools take the same options.
+CLI: `motionclone capture | probe | spec | verify | report | sheet | side-by-side` (or `npx motionclone ...`).
+MCP: the `capture`, `probe`, `draft_spec`, `verify`, `report`, `design_sheet` and `side_by_side` tools take the same options.
 Use whichever is available; the examples show the CLI.
 
 ## 1. Scope
@@ -22,7 +22,16 @@ Settle these before capturing; ask the user when unclear.
 
 - Target: which element and which motion (load, hover, click, scroll).
 - Destination: the project and file where the clone goes, and its stack.
-- Fidelity: `motion` (default, timing, easing, distance) or `pixel` (also compares rest frames).
+- Fidelity: `motion` or `look`; pick it now, see below.
+
+### Fidelity: motion or look
+
+- `motion`: only the movement must match. The page keeps its own look. This is the default.
+- `look`: the rebuild also looks close to the reference: layout, colours, type sizes, radii and spacing.
+  The text and images stay the user's own.
+- Pick `look` when the user asks for a side by side, says "same" or "similar", says "match the design", or shows the reference next to the result.
+- When unsure, ask one short question: "Should it only move the same, or also look close?"
+- With `look`, do the design pass below before any motion work.
 
 ## 2. Capture the reference
 
@@ -54,6 +63,26 @@ motionclone capture ref.mp4 --out .motionclone/ref --start 1.2 --end 3 --crop 0,
   Declare regions when elements sit closer than about 6 px.
 - Colour-only, scale and clip-path changes are not measured.
 - Read the warnings; a region that was never found means the box is wrong.
+
+## Design pass (fidelity look only)
+
+Do this before motion work, so the rebuild does not start from your own look.
+
+1. Capture the reference as in step 2. A page or a recording both work.
+2. Read the design facts: run `motionclone spec` and read its `look` section, and `look.json` in the capture (palette, text colour, type scale, radii, spacing, blocks).
+   Also view the rest frames: `motionclone sheet .motionclone/ref .motionclone/ref --out .motionclone/design` (the reference twice).
+3. Build the static layout first, with no motion: sizes, spacing, colours, type sizes, radii.
+4. Capture your page with `--like` (step 5), then run `motionclone verify ... --fidelity look` and `motionclone sheet .motionclone/ref .motionclone/clone --out .motionclone/design`.
+   The verdict's Look section names each colour, size or block that is off, with the number to use.
+   The PNG shows reference, clone and difference at the first frame, the last frame and each still stretch.
+5. Fix the look rows and the biggest differences, and repeat until the look rows pass and the clone looks close.
+6. Only then go on with the motion, from step 3.
+
+Notes:
+
+- A looping reference (several cycles in the clip) must be rebuilt over the whole clip, not one cycle.
+  Capture with `--trigger none` and a duration that covers every cycle, and check the later cycles too.
+- A sheet compares looks, not motion; mid-motion frames will differ and that is fine.
 
 ## 3. Draft the spec
 
@@ -130,6 +159,20 @@ Do not view frames of passing rows.
 
 Stop after 5 rounds.
 Report the residual rows to the user with their messages and your guess at why, instead of widening tolerances or hiding them.
+
+## 8. Show the result
+
+End every run the user wants to show with a side by side:
+
+```
+motionclone side-by-side .motionclone/ref .motionclone/clone --out .motionclone/side-by-side.gif --labels "Reference,Rebuild"
+```
+
+- Run `verify` first. A `verdict.json` in the clone directory adds its result under the label, for example "PASS 4/4" in green or "FAIL 1/4" in red.
+- Several clone directories compare several rebuilds. Use `.mp4` for long clips. A gif over 8 MB gets a warning; lower `--width` or `--fps`, or use `--from` and `--to`.
+- `--crop x,y,w,h` (once for all, or once per input) cuts away unrelated page area.
+- `--offset "0,120"` shifts a capture's clock when its motion starts late or early.
+- Do not hand-roll ffmpeg for this.
 
 ## Notes
 

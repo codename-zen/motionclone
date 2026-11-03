@@ -22,6 +22,36 @@ AI coding agents can copy a layout from a screenshot, but they cannot see motion
 They guess the timing, use a generic ease-in-out and call it done.
 motionclone gives you and your agent the real numbers, and a check that fails until the motion matches.
 
+## Benchmarks
+
+We ran motionclone on screen recordings of real apps, then rebuilt each animation with a different look and verified it.
+Everything below was measured automatically from the video.
+The recordings are not in this repo.
+
+**Google Pay, scratch to reveal** (57 fps phone recording)
+
+| Motion                   | Measured from the video                                    | Our rebuild                      |
+| ------------------------ | ---------------------------------------------------------- | -------------------------------- |
+| Card grows from the grid | scale 0.626 to 1, starts 644 ms, 298 ms, material standard | scale 0.624 to 1, 640 ms, 310 ms |
+| Card moves to the centre | starts 677 ms, 258 ms, ease                                | 674 ms, 258 ms                   |
+| Backdrop dims            | starts 651 ms, 269 ms, ease                                | 649 ms, 274 ms                   |
+
+The rebuild passes all 4 checked rows.
+A rebuild that dims over 339 ms instead fails: `header[0] progress is 0.183 off the spec curve at 702 ms`.
+
+**Droppy, notch opens into a music player** (60 fps Mac recording)
+
+| Motion         | Measured from the video         | Our rebuild                          |
+| -------------- | ------------------------------- | ------------------------------------ |
+| Title fades in | starts 678 ms, 205 ms, ease-out | starts 671 ms, 229 ms, ease-out quad |
+| Title grows    | scale 0.87 to 1                 | scale 0.85 to 1                      |
+| Title sharpens | blur 21 px to 0                 | blur 24 px to 0                      |
+| Title rises    | 78 px with a 4.6 % overshoot    | 83 px, no overshoot                  |
+
+The rebuild passes all 4 checked rows.
+The same rebuild without blur and scale fails with `title[0] blur missing` and `title[0] scale missing`.
+The album art rows come out as low confidence, so they are shown but not checked: the small artwork in the closed notch looks like the large one and confuses the tracker.
+
 ## Install
 
 You need Node 24 or later.

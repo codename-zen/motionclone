@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>motionclone demo: rebuild without blur and scale</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; font-family: system-ui, sans-serif; }
+
+  /* The panel grows from a small pill; its edge is barely visible, like a dark notch on a dark screen. */
+  .panel {
+    position: absolute; left: 240px; top: 40px; width: 720px; height: 300px;
+    border-radius: 44px; background: #0a0a0b; transform-origin: 50% 0;
+    animation: panel 420ms cubic-bezier(0.32, 0.72, 0, 1) 300ms both;
+  }
+  @keyframes panel { from { transform: scale(0.34, 0.2); } to { transform: none; } }
+
+  /* Compact content: leaves before the expanded content arrives in the same area. */
+  .mini {
+    position: absolute; left: 470px; top: 52px; display: flex; gap: 160px; align-items: center;
+    animation: mini-out 200ms cubic-bezier(0.4, 0, 1, 1) 300ms both;
+  }
+  .mini .thumb { width: 44px; height: 44px; border-radius: 10px; background: linear-gradient(135deg, #ff6a3d, #ffb36b); }
+  .mini .bars { width: 40px; height: 16px; background: repeating-linear-gradient(90deg, #ff9a3d 0 4px, transparent 4px 8px); }
+  @keyframes mini-out { from { opacity: 1; filter: blur(0); } to { opacity: 0; filter: blur(10px); } }
+
+  .art {
+    position: absolute; left: 290px; top: 90px; width: 140px; height: 140px; border-radius: 30px;
+    background: linear-gradient(135deg, #ff6a3d, #ffb36b 55%, #fff1d6);
+    animation:
+      fade 260ms cubic-bezier(0.25, 0.1, 0.25, 1) 450ms both,
+      rise 500ms cubic-bezier(0.34, 1.4, 0.64, 1) 450ms both;
+  }
+  .title {
+    position: absolute; left: 470px; top: 120px; color: #fff; font-weight: 700; font-size: 34px; line-height: 1.15; white-space: nowrap;
+    animation:
+      fade 260ms cubic-bezier(0.25, 0.1, 0.25, 1) 480ms both,
+      rise 500ms cubic-bezier(0.34, 1.4, 0.64, 1) 480ms both;
+  }
+  .title small { display: block; color: #8e8e93; font-weight: 500; font-size: 28px; }
+
+  @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes grow { from { scale: 0.7; } to { scale: 1; } }
+  @keyframes unblur { from { filter: blur(24px); } to { filter: blur(0); } }
+  @keyframes rise { from { translate: 0 40px; } to { translate: 0 0; } }
+</style>
+</head>
+<body>
+  <div class="panel"></div>
+  <div class="mini"><div class="thumb"></div><div class="bars"></div></div>
+  <div class="art"></div>
+  <div class="title">Sunday Mix<small>Your playlist</small></div>
+</body>
+</html>

@@ -1,35 +1,31 @@
 # motionclone
 
-Measure web motion as numbers, rebuild it, and prove the rebuild moves the same way.
+Copy how an animation moves, then prove your version moves the same way.
 
-Coding agents rebuild a layout well from a screenshot, but they cannot watch motion.
-They guess the timing, pick a generic ease-in-out and call it done.
-motionclone records the motion you point at, turns it into a spec with exact numbers, records your rebuild the same way, and tells you per element what is still off:
+motionclone records an animation from a web page or a video and measures it frame by frame.
+Then it records your version and tells you what is off, in numbers:
 
 ```text
+- .art[0] blur missing: want 24 px -> 0 px from 450 ms over 320 ms, the clone never blurs
 - .card[2] opacity starts 120 ms late (want 380, got 500)
-- .card[2] opacity starts 210 ms after .card[1].opacity (want a 90 ms stagger gap)
 ```
 
-It works as a CLI, as an MCP server for any agent, and with an agent skill that runs the loop until every row passes.
+![Three panels play the same entrance: the reference, a rebuild with its own colours that passes, and a rebuild without blur and scale that fails](.github/assets/demo.gif)
 
-## What it measures
+Left, the reference.
+Middle, a rebuild with its own colours and text but the same motion: it passes.
+Right, the same rebuild without blur and scale: it fails on exactly those rows.
 
-- Start, duration and end of every moving element, per property (opacity, translate, scale, rotate, size, blur).
-  Scale, rotation and translation are read from `transform` combined with the separate `scale`, `rotate` and `translate` properties; blur is the radius of `filter: blur()`.
-- Easing: named presets, any cubic-bezier, springs (with stiffness, damping and a CSS `linear()` curve), steps.
-- Staggers between siblings, overshoot, distance relative to the element size.
-- Elements that must stay still.
-- Pixels on rest frames (mismatch and SSIM), enforced only when you ask for pixel fidelity.
-- Coverage: per tracked element, the properties that became rows and the visible ones that were not measured.
-  Verify also warns when the reference changes inside an element while none of its rows moves, and when it changes outside every tracked element; a passing verdict with warnings reads "PASS with N coverage warnings".
+## Why
 
-Sources: live pages and local HTML (CSS animations and transitions, the Web Animations API, GSAP, Motion and other JavaScript animation), and videos or gifs (screen recordings, exported prototypes).
+AI coding agents can copy a layout from a screenshot, but they cannot see motion.
+They guess the timing, use a generic ease-in-out and call it done.
+motionclone gives you and your agent the real numbers, and a check that fails until the motion matches.
 
 ## Install
 
-motionclone needs Node 24 or later.
-It is not on npm yet; install it from source:
+You need Node 24 or later.
+motionclone is not on npm yet, so install it from source:
 
 ```sh
 git clone https://github.com/codename-zen/motionclone
@@ -37,127 +33,67 @@ cd motionclone
 pnpm install
 pnpm exec playwright install chromium
 pnpm build
-npm link        # puts `motionclone` on your PATH
+npm link
 ```
 
-The first install downloads Chromium for Playwright and a static ffmpeg build.
-
-## Quick start
-
-Record the reference, draft the spec, record your rebuild with the same settings, then verify:
+## Use it
 
 ```sh
+# 1. Record the animation you like
 motionclone capture https://example.com --out ref --duration 1500 --track ".hero h1, .card"
+
+# 2. Turn it into a spec
 motionclone spec ref
+
+# 3. Build your version, then record it the same way
 motionclone capture http://localhost:5173 --like ref --out mine
+
+# 4. Compare
 motionclone verify ref mine
 ```
 
-`spec` prints one row per element and property:
+`verify` exits with 0 when every row matches and 1 when something is off.
+It also saves images of the failing moments, with the reference and your version side by side.
 
-```text
-8 motion rows, 1 still elements
-.card[0].opacity  start 200 ms  duration 700 ms  cubic-bezier(0.16, 1, 0.3, 1) (easeOutExpo)  declared/high
-.card[1].opacity  start 290 ms  duration 700 ms  cubic-bezier(0.16, 1, 0.3, 1) (easeOutExpo)  declared/high
-...
-```
+The reference can also be a screen recording or a gif.
+See the [guide](docs/guide.md) for video, triggers like hover and scroll, cookie banners and logged-in pages.
 
-`verify` prints a table and a list of fixes, writes `verdict.json`, `report.md` and labelled comparison sheets (id, message, Reference, Clone and Difference columns, a time per row) for the failing rows only, and exits with 0 when every row passes, 1 when rows fail and 2 on a setup error:
+## With an AI agent
 
-```text
-# motionclone verify: FAIL
-
-7 of 9 rows pass. Fidelity: motion.
-
-| id | result | start | duration | stagger gap | easing | overshoot | distance |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| .card[1].opacity | pass | 290 / 290 | 700 / 700 | 90 / 90 | 0.000 | 0.0 / 0.0 | 1.000 / 1.000 |
-| .card[2].opacity | FAIL | 380 / 500 ! | 700 / 700 | 90 / 210 ! | 0.000 | 0.0 / 0.0 | 1.000 / 1.000 |
-...
-```
-
-`--like ref` copies every capture setting of the reference except the url and output folder.
-A comparison is only fair when both sides are recorded the same way, and `verify` refuses captures whose settings differ.
-
-### Triggers
-
-`--trigger` starts the motion: `load` (default), `none` for loops, `hover`, `leave` and `click` with `--target <css>`, and `scroll` with `--scroll-to <px|css>`.
-`--pre-click <css>` (repeatable) clicks elements in order before the trigger, for example `--pre-click ".cookie-banner button"` to dismiss a cookie banner.
-A selector that matches nothing is skipped with a warning.
-`--pre-js <code|file>` runs JavaScript in the page before the trigger; a path to an existing `.js` file is read, and statements and `await` work.
-Both run after `--wait-before` and before the pre-roll, under the same virtual clock as the rest of the capture, which then advances 100 ms after each group so handlers, timers and transitions finish before frame 0.
-With the `load` trigger they run after the page's load animations have started, so prefer `--trigger none` or a click when the motion should begin after the banner is gone.
-They are recorded in `capture.json`, so `--like` repeats them on the clone.
-Pages behind a login work with `--storage-state <file>` (a Playwright storage state) or `--cdp-url` to attach to a Chrome you are logged in to.
-
-### From a video or gif
-
-```sh
-motionclone probe loader.mov
-motionclone capture loader.mov --out ref --start 0:03 --end 0:05 --crop 320,180,960,540 --css-scale 2 \
-  --region "card[0]=40,60,280,160" --region "card[1]=340,60,280,160"
-motionclone spec ref
-motionclone capture http://localhost:5173 --like ref --track ".card" --out mine
-motionclone verify ref mine --map card=.card
-```
-
-Regions name the elements to follow in the video (`card[0]`, `card[1]` form a group like DOM siblings); without `--region` moving blobs are found automatically.
-`--css-scale 2` converts a recording of a 2x screen to CSS pixels.
-`--map` tells `verify` which selector in your rebuild plays each region.
-
-## With an agent
-
-Start the MCP server and add it to your agent, for example Claude Code:
+Add the MCP server to your agent, for example Claude Code:
 
 ```sh
 claude mcp add motionclone -- motionclone mcp
 ```
 
-Tools: `capture`, `probe`, `draft_spec`, `verify` and `report`.
-Answers stay small: counts, the failing rows with their fix messages, and file paths.
+Then copy the [`skill`](skill) folder to your agent's skills folder (`~/.claude/skills/motionclone` for Claude Code).
+The skill tells the agent to record, build, verify and fix until every row passes, and to stop after five rounds and say what still differs.
 
-The agent skill in [`skill/SKILL.md`](skill/SKILL.md) teaches the loop: scope, capture, spec, build in the project's own stack, capture with `--like`, verify, fix the row the verdict names, and stop after five rounds with an honest list of what still differs.
-Copy the `skill` folder to your agent's skills folder (for Claude Code: `~/.claude/skills/motionclone`).
+## What it measures
 
-## How it works
+- When each element starts and stops moving, and the gap between siblings.
+- The easing curve, including springs and overshoot.
+- Opacity, position, scale, rotation, size and blur.
+- Elements that should stay still.
 
-- **Capture** runs Chromium with a virtual clock: JavaScript time, timers, `requestAnimationFrame` and CSS or Web Animations all advance together, frame by frame, and each frame is saved as a lossless PNG.
-  Two captures of the same page are byte-identical.
-- Animations are recorded through the Chrome DevTools Protocol from the moment the page opens, so animations that already finished are kept with their declared timing and easing.
-- A tracker samples every match of each `--track` selector on every frame: box, opacity, transform, filter, clip-path and colours.
-- **Spec** uses the declared CSS or Web Animations values when they match the track, and fits the track otherwise (JavaScript timelines, springs, video).
-- **Verify** measures the rebuild the same way and checks each row against its tolerances: timing ±80 ms, stagger gaps ±40 ms, easing within 0.05 progress, distance ±10 %, overshoot ±5 points.
-
-Design notes: [virtual time](docs/adr/0001-virtual-time.md), [video input](docs/adr/0002-video-input.md).
-
-## Limits
-
-- Video input follows movement, uniform scale and blur; rotation and colour-only changes in a video are not measured.
-- When a video hides the start of a motion (a card that fades in while it grows and sharpens), the spec marks the row `fromObserved: false` and extrapolates its start value; verify checks such rows against the frames the video shows, so curves that look the same on those frames pass, and the drafted duration and easing are a best guess.
-- Rows whose evidence is weak (few reliable samples, a loose fit, little of the change visible or poor tracker matches) are drafted with confidence "low"; verify lists them under "Advisory (low confidence)" with the reason and never fails on them, so a PASS with advisory rows says nothing about those motions.
-- Spec drafting rejects fits no page could produce (opacity outside 0..1, control points outside x 0..1 and y -1..2, overshoot the readings do not show, start values extrapolated beyond the visible change again); such motions come out as the closest plausible fit with lower confidence, not as the fit with the least error.
-- Canvas, WebGL and WebGPU drawing is not traced yet; their motion is only visible as pixels.
-- Colour, background, shadow, clip-path and anything drawn inside an element (text, images, canvas) never become rows; verify lists them under "Not measured" and warns when the first four change in a page reference.
-- Coverage warnings come from pixel change in the reference: a change that happens in the same time window as one of the element's rows (a colour fading together with the opacity) is not flagged, and frames where the page scrolls are skipped.
-- A looping `steps()` animation cannot be fitted yet, and `steps(n, start)` and `steps(n, end)` look the same in a track.
-- JavaScript timelines count from when their script ran, 16 ms before the first frame, so their declared delays read 16 ms earlier; this cancels out because both sides are captured the same way.
+It does not measure colour, shadow, or what is drawn inside an element (text, images, canvas).
+The report lists what it did not check, and warns when the reference changes somewhere you did not measure.
+More limits are in the [guide](docs/guide.md#limits).
 
 ## Use what you may
 
-motionclone measures motion so you can build your own.
-Fonts, images, code and brand assets on other sites belong to their owners; by default motionclone copies none of them, only numbers about how things move.
+motionclone copies numbers about motion, not fonts, images or code.
+What you build with those numbers should be your own.
 
 ## Development
 
 ```sh
-pnpm test             # vitest: fixtures, capture, fitting, verify, CLI, MCP, video
-pnpm exec tsc --noEmit
+pnpm test
 pnpm lint
 pnpm build
 ```
 
-The `fixtures` folder holds pages whose animation values are known; the tests check that motionclone recovers them.
-`fixtures/_variants` holds deliberately wrong versions that must fail on exactly the right rows.
+The tests run against pages in `fixtures` whose animation values are known.
 CI runs on a self-hosted Linux runner, see [docs/ci.md](docs/ci.md).
 
 ## License

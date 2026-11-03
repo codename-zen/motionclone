@@ -19,7 +19,8 @@
 		"typecheck": "tsc --noEmit",
 		"test": "vitest run",
 		"lint": "biome check .",
-		"format": "biome format --write ."
+		"format": "biome format --write .",
+		"demo": "node scripts/demo.ts"
 	},
 	"dependencies": {
 		"@modelcontextprotocol/sdk": "^1.32.2",

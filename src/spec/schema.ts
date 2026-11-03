@@ -3,6 +3,7 @@ import { Trigger } from "../capture/options.ts";
 import { PROPERTIES } from "../measure/series.ts";
 
 export const SPEC_VERSION = 1;
+export const PROGRESS = "progress";
 
 export const DEFAULT_TOLERANCES = {
 	startMs: 80,
@@ -62,7 +63,8 @@ export const SpecRow = z.object({
 	id: z.string(),
 	selector: z.string(),
 	index: z.number().int().nonnegative(),
-	property: z.enum(PROPERTIES),
+	/** A tracked property, or `progress`: appearance in the element's box from pixels, 0 to 1 (ADR 0005). */
+	property: z.enum([...PROPERTIES, PROGRESS]),
 	from: z.number(),
 	to: z.number(),
 	/** False when the reference never shows the start value: `from` is extrapolated and verify checks the clone against the visible readings. */

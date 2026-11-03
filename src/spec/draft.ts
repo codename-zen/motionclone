@@ -13,6 +13,7 @@ import {
 	readCaptureFile,
 } from "./capture-file.ts";
 import { supportOf } from "./confidence.ts";
+import { crossCheck } from "./cross-check.ts";
 import { matchDeclared, type Timing } from "./declared.ts";
 import { curveDeviation } from "./deviation.ts";
 import { candidateEasing, easingLabel } from "./easing.ts";
@@ -24,6 +25,7 @@ import {
 } from "./motion.ts";
 import { type Observed, observationModel, observe } from "./observe.ts";
 import { fitPartialRows, type PartialFit } from "./partial.ts";
+import { draftProgressRows } from "./progress.ts";
 import {
 	DEFAULT_TOLERANCES,
 	SPEC_VERSION,
@@ -160,12 +162,14 @@ function draftRows(
 	});
 }
 
+// The id after the element key names the row within its element: ".opacity", ".progress#2".
+const rowKey = (r: SpecRow, index: number) =>
+	`${r.selector}|${r.id.slice(elementKey(r.selector, r.index).length)}|${index}`;
+
 function linkStagger(rows: SpecRow[]): void {
-	const byKey = new Map(
-		rows.map((r) => [`${r.selector}|${r.property}|${r.index}`, r]),
-	);
+	const byKey = new Map(rows.map((r) => [rowKey(r, r.index), r]));
 	for (const r of rows) {
-		const prev = byKey.get(`${r.selector}|${r.property}|${r.index - 1}`);
+		const prev = byKey.get(rowKey(r, r.index - 1));
 		if (prev)
 			r.stagger = { after: prev.id, gapMs: r1(r.startMs - prev.startMs) };
 	}
@@ -187,6 +191,17 @@ export async function draftSpec(
 	]);
 	const motions = motionProperties(track);
 	const rows = draftRows(motions, track, animations, cap);
+	const model = observationModel(cap);
+	const progress = await draftProgressRows({
+		dir,
+		track,
+		clip: cap.clip,
+		rows,
+		video: model !== null,
+		noise: model?.noise ?? 0,
+	});
+	crossCheck(rows, progress, cap.frameMs);
+	rows.push(...progress.map((p) => p.row));
 	linkStagger(rows);
 	const moving = new Set(motions.map((m) => elementKey(m.selector, m.index)));
 	const o = cap.options;

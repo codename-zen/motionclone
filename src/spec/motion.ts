@@ -101,7 +101,10 @@ export interface FittedMotion {
 	overshoot: number;
 }
 
-export function fitMotion(m: MovingProperty): FittedMotion {
+/** Fit a series over its motion window; any series with a window, a tracked property or a pixel progress curve. */
+export function fitMotion(
+	m: Pick<MovingProperty, "series" | "window">,
+): FittedMotion {
 	const { samples, hint } = normalise(m.series, m.window);
 	const c = classifyMotion(m.series, m.window);
 	return { samples, hint, best: c.best, overshoot: c.overshoot };

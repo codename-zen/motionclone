@@ -1,3 +1,4 @@
+import type { AnimationRecord } from "../capture/types.ts";
 import type { Track } from "../measure/elements.ts";
 
 interface Ref {
@@ -78,4 +79,30 @@ export function renameTrack(track: Track, map: MapEntry[]): Track {
 		],
 		frames,
 	};
+}
+
+/** The clone's animations with their tracked matches renamed the way renameTrack renames elements. */
+export function renameAnimations(
+	animations: AnimationRecord[],
+	map: MapEntry[],
+): AnimationRecord[] {
+	if (map.length === 0) return animations;
+	const mapped = new Set(map.map((m) => m.clone.selector));
+	return animations.map((a) => ({
+		...a,
+		tracked: a.tracked.flatMap((t) =>
+			mapped.has(t.selector)
+				? map
+						.filter(
+							(m) =>
+								m.clone.selector === t.selector &&
+								(m.clone.index === null || m.clone.index === t.index),
+						)
+						.map((m) => ({
+							selector: m.ref.selector,
+							index: m.ref.index ?? t.index,
+						}))
+				: [t],
+		),
+	}));
 }

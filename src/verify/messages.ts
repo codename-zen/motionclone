@@ -1,4 +1,4 @@
-import { candidateEasing, easingLabel, unitCurve } from "../spec/easing.ts";
+import { easingLabel, unitCurve } from "../spec/easing.ts";
 import type { SpecRow } from "../spec/schema.ts";
 import type { CloneMotion } from "./clone.ts";
 import type { Metric } from "./schema.ts";
@@ -47,10 +47,10 @@ function earlyBias(want: (u: number) => number, got: (u: number) => number) {
 }
 
 export function easingMessage(row: SpecRow, c: Moving, m: Metric): string {
-	const got = candidateEasing(c.fit.best);
+	const got = c.easing;
 	const bias = earlyBias(unitCurve(row.easing), unitCurve(got));
 	const how =
-		c.fit.best.kind === "linear"
+		got.type === "linear"
 			? "too linear"
 			: bias < -0.02
 				? "too slow at the start"

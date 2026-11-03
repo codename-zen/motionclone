@@ -43,6 +43,7 @@ const clone = (start: number): CloneMotion => ({
 	fit: {} as never,
 	startMs: start,
 	durationMs: 226,
+	easing: { type: "linear" },
 });
 
 // The reference shows the element from 672 ms on; earlier frames carry no blur reading.

@@ -1,7 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { readTrack } from "../measure/elements.ts";
-import { readCaptureFile } from "../spec/capture-file.ts";
+import { readAnimations, readCaptureFile } from "../spec/capture-file.ts";
 import { observationModel } from "../spec/observe.ts";
 import { SpecFile } from "../spec/schema.ts";
 import { advisoryReason } from "./advisory.ts";
@@ -9,7 +9,12 @@ import { type CloneMotion, indexClone, measureClone } from "./clone.ts";
 import { checkCoverage } from "./coverage.ts";
 import { evidenceOf } from "./evidence.ts";
 import { guardrails } from "./guardrails.ts";
-import { type MapEntry, parseMap, renameTrack } from "./map.ts";
+import {
+	type MapEntry,
+	parseMap,
+	renameAnimations,
+	renameTrack,
+} from "./map.ts";
 import {
 	comparePixels,
 	DEFAULT_PIXEL_THRESHOLD,
@@ -64,12 +69,15 @@ export async function verify(
 	const ref = resolve(refDir);
 	const clone = resolve(cloneDir);
 	const spec = await loadSpec(specFile);
-	const [refCap, cloneCap, refTrack, cloneTrack] = await Promise.all([
-		readCaptureFile(ref),
-		readCaptureFile(clone),
-		readTrack(ref),
-		readTrack(clone),
-	]);
+	const [refCap, cloneCap, refTrack, cloneTrack, cloneAnimations] =
+		await Promise.all([
+			readCaptureFile(ref),
+			readCaptureFile(clone),
+			readTrack(ref),
+			readTrack(clone),
+			// Without the file the clone is measured by fitting only, as for a JavaScript-driven page.
+			readAnimations(clone).catch(() => []),
+		]);
 	const map: MapEntry[] = parseMap(opts.map ?? []);
 	const video = isVideoCapture(refCap);
 	const errors = setupErrors(spec.meta, refCap, cloneCap, map);
@@ -81,16 +89,16 @@ export async function verify(
 	let pixel: Verdict["pixel"] = null;
 	let coverage: Coverage | null = null;
 	if (errors.length === 0) {
-		const idx = indexClone(renameTrack(cloneTrack, map));
+		const idx = indexClone(
+			renameTrack(cloneTrack, map),
+			renameAnimations(cloneAnimations, map),
+		);
 		// Video distances are CSS px; the region box and the element box differ in size, so a relative distance would not compare.
 		const specRows = video
 			? spec.rows.map((r) => ({ ...r, relativeDistance: null }))
 			: spec.rows;
 		const measured = new Map<string, CloneMotion>(
-			specRows.map((r) => [
-				r.id,
-				measureClone(idx, r.selector, r.index, r.property),
-			]),
+			specRows.map((r) => [r.id, measureClone(idx, r)]),
 		);
 		const anchors = new Map<string, StaggerAnchor>();
 		for (const r of specRows) {

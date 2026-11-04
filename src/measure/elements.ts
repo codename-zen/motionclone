@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { TrackFrame } from "../capture/types.ts";
-import { splitAtRests } from "./segments.ts";
+import { afterSnap, splitAtRests } from "./segments.ts";
 import {
 	extractSeries,
 	PROPERTIES,
@@ -91,10 +91,13 @@ export function movingProperties(
 				const pieces = split
 					? splitAtRests(series, MIN_RANGE[property])
 					: [series];
-				const found = pieces.flatMap((piece) => {
-					const window = motionWindow(piece, { size });
-					return window ? [{ window, series: piece }] : [];
-				});
+				// Snaps are told apart only between motions; a lone there-and-back move stays whole.
+				const found = pieces
+					.map((p) => (pieces.length > 1 ? afterSnap(p) : p))
+					.flatMap((piece) => {
+						const window = motionWindow(piece, { size });
+						return window ? [{ window, series: piece }] : [];
+					});
 				for (const [k, f] of found.entries())
 					out.push({
 						selector,

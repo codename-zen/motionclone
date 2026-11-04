@@ -6,6 +6,8 @@ export interface Hint {
 	startMs: number;
 	endMs: number;
 	frameMs: number;
+	/** First and last frame time of the capture; fitted timings stay inside it (`clampTiming`). */
+	clip?: { firstMs: number; lastMs: number };
 }
 
 /** A reading that holds the true value somewhere in [lo, hi]; lo === hi for a plain measurement. */

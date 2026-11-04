@@ -1,5 +1,6 @@
 import {
 	type Candidate,
+	clampedX,
 	evaluate,
 	exact,
 	finish,
@@ -115,7 +116,7 @@ export function fitJoint(
 	for (const pr of presets.slice(0, 4)) {
 		const m = nelderMead(
 			(x) => {
-				const t = timingOf(x.slice(4));
+				const t = timingOf(x.slice(4), hints[0]);
 				return evaluate(weighted, spans, sanitize(x), t.delays, t.durationMs)
 					.loss;
 			},
@@ -132,7 +133,7 @@ export function fitJoint(
 		);
 		const p = sanitize(m.x);
 		if (m.fx < free.loss && plausibleBezier(p, seen, margin))
-			free = { p, x: m.x.slice(4), loss: m.fx };
+			free = { p, x: clampedX(m.x.slice(4), hints[0]), loss: m.fx };
 	}
 	const named = finish(tracks, spans, presets[0] as Candidate);
 	const curve = finish(tracks, spans, free);

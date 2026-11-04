@@ -4,7 +4,8 @@ import {
 	type PartialTrack,
 	visibleChange,
 } from "../fit/joint.ts";
-import type { Hint } from "../fit/types.ts";
+import type { TimeBounds } from "../fit/plausible.ts";
+import type { Hint, Observation } from "../fit/types.ts";
 import type { MovingProperty } from "../measure/elements.ts";
 import { bezierEasing } from "./easing.ts";
 import { motionId } from "./motion.ts";
@@ -43,6 +44,8 @@ interface Context {
 	model: ObservationModel;
 	/** Tracks whose readings pointed beyond REACH, with that start value; they are held to the visible range. */
 	capped: Map<PartialItem, number>;
+	/** The capture's first and last frame; fitted timings stay inside it. */
+	clip?: TimeBounds;
 }
 
 const label = (m: MovingProperty) => motionId(m);
@@ -57,17 +60,32 @@ const leadOf = (items: readonly PartialItem[]) => {
 	return anchors.length > 0 ? anchors : items;
 };
 
-const hintOf = (items: readonly PartialItem[], frameMs: number): Hint => ({
+const hintOf = (items: readonly PartialItem[], ctx: Context): Hint => ({
 	startMs: Math.min(...items.map((i) => i.m.window.startMs)),
 	endMs: Math.max(...items.map((i) => i.m.window.endMs)),
-	frameMs,
+	frameMs: ctx.frameMs,
+	...(ctx.clip
+		? { clip: { firstMs: ctx.clip.firstMs, lastMs: ctx.clip.lastMs } }
+		: {}),
 });
+
+/**
+ * The change a track shows: its plain readings, or the box positions the tracker filled in before it saw the
+ * element, which bound the start on the far side (ADR 0003), when those lie further from the end value.
+ */
+function shownChange(obs: readonly Observation[], to: number): number {
+	const edges = obs
+		.filter((o) => o.filled)
+		.flatMap((o) => [o.lo, o.hi].filter(Number.isFinite))
+		.map((v) => Math.abs(v - to));
+	return Math.max(visibleChange(obs, to), ...edges);
+}
 
 /** Bounds for a track's start value: what the property allows, within REACH visible changes of the end value. */
 function rangeOf(i: PartialItem, ctx: Context): [number, number] {
 	const to = i.m.window.to;
 	const reach =
-		(ctx.capped.has(i) ? 1 : REACH) * visibleChange(i.observed.obs, to);
+		(ctx.capped.has(i) ? 1 : REACH) * shownChange(i.observed.obs, to);
 	const [lo, hi] = valueRange(i.m.property, ctx.model);
 	return [Math.max(lo, to - reach), Math.min(hi, to + reach)];
 }
@@ -88,7 +106,7 @@ function fitElements(
 			range: rangeOf(i, ctx),
 		}));
 	});
-	const hints = elements.map((group) => hintOf(leadOf(group), ctx.frameMs));
+	const hints = elements.map((group) => hintOf(leadOf(group), ctx));
 	return { items, fit: fitJoint(tracks, hints, ctx.model?.noise ?? 0) };
 }
 
@@ -223,7 +241,7 @@ function holdToVisibleRange(
 	const to = item.m.window.to;
 	if (
 		Math.abs(wanted - to) <=
-		REACH * visibleChange(item.observed.obs, to) * 1.001
+		REACH * shownChange(item.observed.obs, to) * 1.001
 	)
 		return;
 	ctx.capped.set(item, wanted);
@@ -240,8 +258,9 @@ export function fitPartialRows(
 	items: readonly PartialItem[],
 	frameMs: number,
 	model: ObservationModel,
+	clip?: TimeBounds,
 ): Map<MovingProperty, PartialFit> {
-	const ctx: Context = { frameMs, model, capped: new Map() };
+	const ctx: Context = { frameMs, model, capped: new Map(), clip };
 	const bySelector = new Map<string, Map<string, PartialItem[]>>();
 	for (const item of [...items].sort((a, b) => a.m.index - b.m.index)) {
 		const elements = bySelector.get(item.m.selector) ?? new Map();

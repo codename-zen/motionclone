@@ -78,7 +78,17 @@ export function readProperty(el: TrackedElement, property: Property): number {
 	];
 }
 
-/** One value per frame for a tracked element; rotation is unwrapped so 359 to 1 degrees is a 2 degree move. */
+const BOX_PROPERTIES = new Set<Property>(["x", "y", "width", "height"]);
+
+/** A video tracker lost the element on this frame: its box is interpolated or held, not seen (ADR 0002). */
+export const lost = (el: TrackedElement): boolean =>
+	el.observed !== undefined && !el.observed.position && !el.observed.opacity;
+
+/**
+ * One value per frame for a tracked element; rotation is unwrapped so 359 to 1 degrees is a 2 degree move.
+ * Video boxes on frames where the tracker lost the element after first finding it are left out: they are
+ * interpolated, not seen. Leading ones stay, as the extrapolated start (ADR 0003).
+ */
 export function extractSeries(
 	frames: readonly TrackFrame[],
 	selector: string,
@@ -88,9 +98,13 @@ export function extractSeries(
 	const out: Series = [];
 	let offset = 0;
 	let prev: number | null = null;
+	let found = false;
 	for (const frame of frames) {
 		const el = frame.elements[selector]?.find((e) => e.index === index);
 		if (!el) continue;
+		if (BOX_PROPERTIES.has(property) && lost(el)) {
+			if (found) continue;
+		} else found = true;
 		let value = readProperty(el, property);
 		if (property === "rotate") {
 			if (prev !== null) {

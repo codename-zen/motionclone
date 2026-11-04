@@ -1,4 +1,5 @@
 import { bezierY } from "./bezier.ts";
+import { clampTiming } from "./clip.ts";
 import { nelderMead } from "./optimize.ts";
 import type { BezierParams } from "./presets.ts";
 import type { Hint, Observation } from "./types.ts";
@@ -116,10 +117,22 @@ export interface Candidate {
 	loss: number;
 }
 
-export const timingOf = (x: readonly number[]) => ({
-	durationMs: Math.max(1, x[0] as number),
-	delays: x.slice(1),
-});
+/** Duration and delays from `x`, held inside the hint's clip when it has one; the duration ends by the clip's end after the latest delay. */
+export function timingOf(x: readonly number[], hint?: Hint) {
+	const delays = x
+		.slice(1)
+		.map((d) => (hint ? clampTiming(hint, d, 1).delayMs : d));
+	const durationMs = hint
+		? clampTiming(hint, Math.max(...delays), x[0] as number).durationMs
+		: Math.max(1, x[0] as number);
+	return { durationMs, delays };
+}
+
+/** `x` as `timingOf` reads it, so a candidate stores the timing it was scored with. */
+export const clampedX = (x: readonly number[], hint?: Hint): number[] => {
+	const t = timingOf(x, hint);
+	return [t.durationMs, ...t.delays];
+};
 
 export function fitTimingOf(
 	tracks: readonly PartialTrack[],
@@ -129,8 +142,9 @@ export function fitTimingOf(
 ): Candidate {
 	const frameMs = (hints[0] as Hint).frameMs;
 	const base = Math.max(4 * frameMs, ...hints.map((h) => h.endMs - h.startMs));
+	const hint = hints[0] as Hint;
 	const f = (x: readonly number[]) => {
-		const t = timingOf(x);
+		const t = timingOf(x, hint);
 		return evaluate(tracks, spans, p, t.delays, t.durationMs).loss;
 	};
 	const seeds: number[][] = [];
@@ -143,7 +157,7 @@ export function fitTimingOf(
 		.slice(0, 3);
 	let best: Candidate = {
 		p,
-		x: top[0]?.s ?? [base],
+		x: clampedX(top[0]?.s ?? [base], hint),
 		loss: Number.POSITIVE_INFINITY,
 	};
 	for (const { s } of top) {
@@ -151,7 +165,7 @@ export function fitTimingOf(
 			(s[0] as number) * 0.1,
 			...hints.map(() => frameMs),
 		]);
-		if (m.fx < best.loss) best = { p, x: m.x, loss: m.fx };
+		if (m.fx < best.loss) best = { p, x: clampedX(m.x, hint), loss: m.fx };
 	}
 	return best;
 }

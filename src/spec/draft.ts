@@ -170,6 +170,7 @@ function draftRows(
 		items.filter((i) => !i.observed.fromObserved),
 		cap.frameMs,
 		model,
+		bounds,
 	);
 	const noise = model?.noise ?? 0;
 	const clipped = clippedRanges(cap);

@@ -57,12 +57,38 @@ const rangeOf = (s: Series) => {
 	return Math.max(...v) - Math.min(...v);
 };
 
+/** Pieces of the series on either side of time gaps longer than REST_MS and three frames: frames with no reading. */
+function splitAtGaps(series: Series): Series[] {
+	const gaps = series
+		.slice(1)
+		.map((p, i) => p[0] - (series[i] as Series[number])[0]);
+	const frame = [...gaps].sort((a, b) => a - b)[gaps.length >> 1] ?? 0;
+	const limit = Math.max(REST_MS, 3 * frame);
+	const out: Series[] = [[]];
+	series.forEach((p, i) => {
+		if (i > 0 && (gaps[i - 1] as number) > limit) out.push([]);
+		(out.at(-1) as Series).push(p);
+	});
+	return out;
+}
+
 /**
- * The series cut into one piece per motion, at rests of at least REST_MS; each piece runs from the start of the
- * rest before its motion to the end of the rest after it. A series with one motion comes back whole.
+ * The series cut into one piece per motion, at rests of at least REST_MS and at gaps without readings that long;
+ * each piece runs from the start of the rest before its motion to the end of the rest after it. A series with one
+ * motion comes back whole.
  */
 export function splitAtRests(series: Series, minRange: number): Series[] {
-	const tol = Math.max(minRange, REST_SHARE * rangeOf(series));
+	const floor = Math.max(minRange, MOTION_SHARE * rangeOf(series));
+	const pieces = splitAtGaps(series).flatMap((part) =>
+		piecesOf(part, minRange, rangeOf(series)),
+	);
+	const moving = pieces.filter((p) => p.length >= 2 && rangeOf(p) >= floor);
+	return moving.length > 1 ? moving : [series];
+}
+
+function piecesOf(series: Series, minRange: number, total: number): Series[] {
+	if (series.length < 2) return [series];
+	const tol = Math.max(minRange, REST_SHARE * total);
 	const rests = restRuns(series, tol);
 	const last = series.length - 1;
 	const bounds: [number, number][] = [];
@@ -75,12 +101,31 @@ export function splitAtRests(series: Series, minRange: number): Series[] {
 		end = rest[1];
 	}
 	if (end < last) bounds.push([start, last]);
+	const floor = Math.max(minRange, MOTION_SHARE * total);
 	const pieces = bounds
 		.map(([a, b]) => series.slice(a, b + 1))
-		.filter(
-			(p) =>
-				p.length >= 2 &&
-				rangeOf(p) >= Math.max(minRange, MOTION_SHARE * rangeOf(series)),
-		);
+		.filter((p) => p.length >= 2 && rangeOf(p) >= floor);
 	return pieces.length > 1 ? pieces : [series];
+}
+
+// A step this close to the rest value, as a share of the piece's amplitude, is still the rest.
+const AT_REST = 0.1;
+
+/**
+ * A piece that jumps from its rest to its far value in one frame and eases back to the rest is a set, then a motion
+ * (an element placed off its end and animated in): it starts at the far value. Other pieces come back unchanged.
+ */
+export function afterSnap(piece: Series): Series {
+	const from = piece[0]?.[1] ?? 0;
+	let k = 0;
+	piece.forEach(([, v], i) => {
+		if (Math.abs(v - from) > Math.abs((piece[k] as Series[number])[1] - from))
+			k = i;
+	});
+	const amp = Math.abs((piece[k] as Series[number])[1] - from);
+	if (k < 1 || amp === 0) return piece;
+	const before = (piece[k - 1] as Series[number])[1];
+	const end = (piece.at(-1) as Series[number])[1];
+	const near = (v: number) => Math.abs(v - from) <= AT_REST * amp;
+	return near(before) && near(end) ? piece.slice(k) : piece;
 }

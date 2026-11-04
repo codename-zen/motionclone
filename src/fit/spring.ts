@@ -1,3 +1,4 @@
+import { clampTiming } from "./clip.ts";
 import { nelderMead } from "./optimize.ts";
 import type { Hint, Sample } from "./types.ts";
 
@@ -84,6 +85,7 @@ export function fitSpring(samples: readonly Sample[], hint: Hint): SpringFit {
 	// The window ends at the 1% band, so ln(100) / (zeta * w0) is about the settle time.
 	for (const z of [0.3, 0.6, 1, 2])
 		seeds.push([Math.log(Math.log(100) / (z * settleSec)), Math.log(z)]);
+	const delayOf = (d: number) => clampTiming(hint, d, 1).delayMs;
 	let best: { x: number[]; fx: number } | null = null;
 	for (const [lw, lz] of seeds) {
 		const m = nelderMead(
@@ -91,7 +93,7 @@ export function fitSpring(samples: readonly Sample[], hint: Hint): SpringFit {
 				rmseOf(
 					samples,
 					fromLog(x[0] as number, x[1] as number),
-					x[2] as number,
+					delayOf(x[2] as number),
 				),
 			[lw, lz, delay0],
 			[0.2, 0.2, hint.frameMs / 2],
@@ -105,7 +107,7 @@ export function fitSpring(samples: readonly Sample[], hint: Hint): SpringFit {
 		...spring,
 		zeta: dampingRatio(spring),
 		omega0: Math.sqrt(spring.stiffness),
-		delayMs: b.x[2] as number,
+		delayMs: delayOf(b.x[2] as number),
 		settleMs: settleMs(spring),
 		rmse: b.fx,
 	};

@@ -79,6 +79,36 @@ Declared rows keep the page's own timing.
 A row whose `from` and `to` differ by less than the property's movement floor (opacity 0.01, 0.5 px, scale 0.005, 0.5 deg, blur 0.1 px) is not drafted either: a move away and back, or a frame the tracker lost, is not a motion the row can describe.
 `spec.json` lists each left-out motion under `dropped` with its reason.
 
+## Decision: bounded fits
+
+A phone recording dropped `summary[0].y#2` with "duration 366800206366032.4 ms", and verify said a clone sheet "starts 546404056958816 ms early".
+Rejecting such fits after the fact left the optimisers free to run to infinity, and verify fitted the clone without any bound.
+Every timing fit now sees its delay and duration held inside the capture (`src/fit/clip.ts`): the start from a frame before the first frame to the last frame, the end at most a frame after the last frame.
+This holds for curve, spring delay, steps grid and joint fits, in drafting and on the clone side, which uses the clone capture's own first and last frame.
+A fit that rests on one of those limits is a plateau read as a curve, and yields like a fit off the clip.
+A fully seen row whose best curve misses its readings by more than 0.2 of the change (rms) is dropped too: a loop cut mid-cycle or a tracker glitch.
+Messages and the report print any time of 1000000 ms or more as "over 1000000", never its digits.
+
+## Decision: repeated frames
+
+A recording encoded above its own frame rate shows some frames twice.
+A synthetic easeOutQuint slide of 330 ms, every reading shown twice at 56 fps, was drafted as easeOutExpo over 374 ms.
+When a motion's samples repeat a value mid-motion at least twice, each run of equal readings counts once, at its first time, and so does the last start value before the motion.
+The same slide is now drafted as easeOutQuint from 300 ms over 330 ms.
+On the phone recording (current tracker) the up slides read 178.8 ms (easeOutCirc) and 192 ms (`ease`) in the whole clip, and 178.7 ms and 191.3 ms in clips of one slide each, so the clip length does not cut them short.
+The 329 and 266 ms measured earlier came from the older tracker's readings.
+Durations of curves with a long flat tail are weakly set by video readings: the free curve puts these slides at 273 and 332 ms with an rms gap within 0.003 of the named curves.
+
+## Decision: frames the tracker lost
+
+The tracker interpolates a lost element's box between the frames it saw (ADR 0002).
+On the phone recording, text under a sliding sheet drifted from 180 to 154 px over 2160 ms of lost frames, and that drift joined the reveal after it into one there-and-back motion that no curve fits.
+Box readings (x, y, width, height) on frames where the tracker found nothing, after it first found the element, are now no readings.
+A gap without readings longer than 250 ms and three frames splits a series like a rest, so the reveal after it is its own motion.
+Leading lost frames stay, as the extrapolated start bound above.
+Box positions the tracker filled in before it saw the element bound the start value, so they also widen how far the start value may lie from the end value.
+On the recording, `summary[0].y` (147.5 to 180 px from 699 ms over 338 ms) and `summary[0].y#2` (153.8 to 180 px from 4835 ms over 319 ms) are now drafted, low confidence, where both were dropped.
+
 ## Decision: several motions of one property
 
 A looping clip moves one element's property several times, such as a sheet that slides down, up, down and up.
@@ -89,7 +119,11 @@ Each motion is its own row: `sheet[0].y`, `sheet[0].y#2`, `sheet[0].y#3`, number
 A pulse with a rest at its peak becomes two rows, out and back; without one it still ends where it starts and is dropped.
 Verify pairs row #n with the clone's n-th motion of that property in time.
 A clone with fewer motions fails the missing rows with "sheet[0] y has 3 motions, want 4", and one with more fails the last row the same way.
-A property with a single row is compared against the clone's whole series, as before.
+A property with a single row is compared against the clone's whole series when the clone moves it once.
+When the clone moves it several times, the row is paired with the clone motion that shares the most time with the row, or else starts nearest it.
+On the phone recording the clone's sheet slid four times against one row at 599 ms; it now reads 604 ms over 289 ms against 605 over 293, where it read a start of -546404056958217 ms.
+Between motions, a piece that jumps from its rest to its far value in one frame and eases back starts at the jump: the element was placed off its end, then animated in.
+
 
 ## Decision: confidence and advisory rows
 

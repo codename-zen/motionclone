@@ -17,6 +17,7 @@ Verify measures each clone row the same way the spec measured the reference.
 When the clone capture has a CSS or WAAPI animation that explains the clone's motion for that row, matched exactly as spec drafting matches it, the row uses that animation's start, duration and easing.
 Otherwise, as for script-driven clones, the clone's start and duration come from a fit with the spec row's easing held fixed, the same timing-only fit the easing deviation already uses.
 The free fit only names the clone's easing in messages.
+Clone fits stay inside the clone capture's first and last frame, as drafting's stay inside the reference's (ADR 0003).
 Step easings keep the free fit's timing, because their plateaus defeat the timing optimiser and the free fit already searches them on a grid.
 With `--map`, the clone's animations are renamed along with its track.
 The clipped frames come from `clipped: true` on the element in `track.json` or from `video.clippedTravel` in `capture.json` (ADR 0002).

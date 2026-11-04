@@ -1,3 +1,4 @@
+import { insideClip } from "./clip.ts";
 import type { Hint, Sample } from "./types.ts";
 
 export type StepPosition = "start" | "end";
@@ -30,7 +31,7 @@ const rmseOf = (
 	return Math.sqrt(sum / samples.length);
 };
 
-/** Grid search over count, position, delay and duration; plateaus make gradient methods useless here. */
+/** Grid search over count, position, delay and duration inside the hint's clip; plateaus make gradient methods useless here. */
 export function fitSteps(
 	samples: readonly Sample[],
 	hint: Hint,
@@ -47,6 +48,7 @@ export function fitSteps(
 				const first = pos === "end" ? hint.startMs - dur / n : hint.startMs;
 				for (let d = -1.5 * hint.frameMs; d <= 1.5 * hint.frameMs; d += 2) {
 					const delay = first + d;
+					if (!insideClip(hint, delay, dur)) continue;
 					const r = rmseOf(samples, n, pos, delay, dur);
 					// Fewer steps win ties: a finer staircase can also hit coarse plateaus.
 					if (!best || r < best.rmse - 1e-4)

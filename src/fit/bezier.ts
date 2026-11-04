@@ -1,3 +1,4 @@
+import { clampTiming } from "./clip.ts";
 import { nelderMead } from "./optimize.ts";
 import { excursion, goesPast, sanitizeBezier } from "./plausible.ts";
 import { type BezierParams, PRESETS, type Preset } from "./presets.ts";
@@ -83,8 +84,12 @@ export function fitTiming(
 	for (const d of [hint.startMs - hint.frameMs / 2, hint.startMs - 0.15 * base])
 		for (const k of DUR_SCALES)
 			seeds.push({ delayMs: d, durationMs: base * k });
+	const rmseAt = (delay: number, duration: number) => {
+		const t = clampTiming(hint, delay, duration);
+		return curveRmse(samples, curve, t.delayMs, t.durationMs);
+	};
 	const scored = seeds
-		.map((s) => ({ s, r: curveRmse(samples, curve, s.delayMs, s.durationMs) }))
+		.map((s) => ({ s, r: rmseAt(s.delayMs, s.durationMs) }))
 		.sort((a, b) => a.r - b.r)
 		.slice(0, 3);
 	let best: TimedFit = {
@@ -94,15 +99,13 @@ export function fitTiming(
 	};
 	for (const { s } of scored) {
 		const m = nelderMead(
-			(x) =>
-				curveRmse(samples, curve, x[0] as number, Math.max(1, x[1] as number)),
+			(x) => rmseAt(x[0] as number, x[1] as number),
 			[s.delayMs, s.durationMs],
 			[hint.frameMs / 2, s.durationMs * 0.05],
 		);
 		if (m.fx < best.rmse)
 			best = {
-				delayMs: m.x[0] as number,
-				durationMs: Math.max(1, m.x[1] as number),
+				...clampTiming(hint, m.x[0] as number, m.x[1] as number),
 				rmse: m.fx,
 			};
 	}
@@ -141,13 +144,15 @@ export function fitBezier(samples: readonly Sample[], hint: Hint): BezierFit {
 	};
 	for (const { pr, fit } of presetFits.slice(0, 4)) {
 		const m = nelderMead(
-			(x) =>
-				curveRmse(
+			(x) => {
+				const t = clampTiming(hint, x[4] as number, x[5] as number);
+				return curveRmse(
 					samples,
 					curveOf(sanitize(x)),
-					x[4] as number,
-					Math.max(1, x[5] as number),
-				),
+					t.delayMs,
+					t.durationMs,
+				);
+			},
 			[...pr.p, fit.delayMs, fit.durationMs],
 			[0.1, 0.1, 0.1, 0.1, hint.frameMs / 2, fit.durationMs * 0.05],
 			{ maxIter: 800 },
@@ -156,8 +161,7 @@ export function fitBezier(samples: readonly Sample[], hint: Hint): BezierFit {
 			best = {
 				...best,
 				p: sanitize(m.x),
-				delayMs: m.x[4] as number,
-				durationMs: Math.max(1, m.x[5] as number),
+				...clampTiming(hint, m.x[4] as number, m.x[5] as number),
 				rmse: m.fx,
 			};
 	}

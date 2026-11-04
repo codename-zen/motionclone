@@ -1,4 +1,8 @@
-import { type Candidate, classifyMotion, normalise } from "../fit/classify.ts";
+import {
+	type Candidate,
+	classifyMotion,
+	normaliseIn,
+} from "../fit/classify.ts";
 import type { TimeBounds } from "../fit/plausible.ts";
 import type { Hint, Sample } from "../fit/types.ts";
 import {
@@ -122,7 +126,7 @@ export function fitMotion(
 	m: Pick<MovingProperty, "series" | "window">,
 	bounds?: TimeBounds,
 ): FittedMotion {
-	const { samples, hint } = normalise(m.series, m.window);
+	const { samples, hint } = normaliseIn(m.series, m.window, bounds);
 	const c = classifyMotion(m.series, m.window, bounds);
 	return { samples, hint, best: c.best, overshoot: c.overshoot };
 }

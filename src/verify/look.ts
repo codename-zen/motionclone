@@ -9,6 +9,7 @@ import type { MapEntry } from "./map.ts";
 import { readPng } from "./pixels.ts";
 import type { LookResult } from "./schema.ts";
 import { structureScore } from "./structure.ts";
+import { withCaps } from "./text-score.ts";
 
 export interface LookOptions {
 	/** Failures fail the verdict: true for look and pixel fidelity. */
@@ -82,7 +83,11 @@ export async function verifyLook(
 	const bands = new Map(
 		(refLook?.states ?? []).map((s) => [
 			s.frame,
-			s.pixels.bands.filter((b) => b.hex !== null),
+			withCaps(
+				s.pixels.bands.filter((b) => b.hex !== null),
+				s.pixels.lines,
+				x.refCap.clip.height,
+			),
 		]),
 	);
 	const structure = await structureScore(

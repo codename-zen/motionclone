@@ -1,5 +1,6 @@
 import type { PNG } from "pngjs";
 import type { CellRect } from "./blocks.ts";
+import { isRuledWord } from "./rules.ts";
 
 /** One text line read from pixels, in frame pixels. */
 export interface TextLine {
@@ -20,6 +21,8 @@ interface Glyph {
 	/** The same edges with sub-pixel precision, interpolated where the ink crosses half its contrast. */
 	topEdge: number;
 	bottomEdge: number;
+	/** A solid, nearly square blob: a dot of an icon or a full stop, never a letter. */
+	dot: boolean;
 }
 
 // Pixels this far from the band's background (largest channel difference) may be ink.
@@ -31,6 +34,13 @@ const BASELINE_PX = 1;
 // A line has at least this many glyphs on its baseline; icons and rules stand alone.
 const MIN_GLYPHS = 3;
 const MIN_CAP_PX = 4;
+// Glyphs on a baseline under this share of the median letter are dots and commas; over ICON times it, icons.
+const SMALL = 0.5;
+const ICON = 1.6;
+// A glyph this many times wider than tall is a rule or a dash, not a letter.
+const RULE_WIDTH = 4;
+// Ink filling this share of a nearly square glyph's box makes it a dot: letters have holes, stems or bowls.
+const DOT_FILL = 0.8;
 // Glyphs of one line further apart than this many cap heights are separate lines, such as text in two cards.
 const WORD_GAP = 1.5;
 
@@ -142,6 +152,7 @@ function glyphsOf(d: Float32Array, w: number, h: number): Glyph[] {
 				core,
 				false,
 			);
+			if (isRuledWord(part, w)) continue;
 			const g = { x0: w, x1: -1, top: h, bottom: -1 };
 			for (const k of part) {
 				const x = k % w;
@@ -160,8 +171,11 @@ function glyphsOf(d: Float32Array, w: number, h: number): Glyph[] {
 				const outer = Math.min(at(col, outside), inner);
 				return inner > outer ? (inner - half) / (inner - outer) : 0;
 			};
+			const box = (g.x1 - g.x0) * (g.bottom - g.top);
+			const aspect = (g.x1 - g.x0) / (g.bottom - g.top);
 			out.push({
 				...g,
+				dot: part.length >= DOT_FILL * box && aspect >= 0.6 && aspect <= 1.6,
 				topEdge: g.top + 0.5 - edge(g.top, g.top - 1),
 				bottomEdge: g.bottom - 0.5 + edge(g.bottom - 1, g.bottom),
 			});
@@ -197,7 +211,7 @@ function linesOf(glyphs: Glyph[]): TextLine[] {
 				on.includes(g) ||
 				(g.top < base && g.bottom > top && g.x1 > x0 && g.x0 < x1),
 		);
-		for (const run of runsOf(on, base - top)) {
+		for (const run of runsOf(taken, on, base - top)) {
 			const line = lineOf(run);
 			if (line) out.push(line);
 		}
@@ -207,8 +221,9 @@ function linesOf(glyphs: Glyph[]): TextLine[] {
 }
 
 // Glyphs on one baseline, split where neighbours are further apart than WORD_GAP cap heights: columns, cards.
-function runsOf(on: Glyph[], cap: number): Glyph[][] {
-	const sorted = [...on].sort((a, b) => a.x0 - b.x0);
+// Descenders across the line (`taken`) close gaps too, so a word like "fy" does not split its line.
+function runsOf(taken: Glyph[], on: Glyph[], cap: number): Glyph[][] {
+	const sorted = [...taken].sort((a, b) => a.x0 - b.x0);
 	const runs: Glyph[][] = [];
 	let end = Number.NEGATIVE_INFINITY;
 	for (const g of sorted) {
@@ -217,17 +232,42 @@ function runsOf(on: Glyph[], cap: number): Glyph[][] {
 		else runs.push([g]);
 		end = Math.max(end, g.x1);
 	}
-	return runs.filter((r) => r.length >= MIN_GLYPHS);
+	return runs
+		.map((r) => r.filter((g) => on.includes(g)))
+		.filter((r) => r.length >= MIN_GLYPHS);
+}
+
+const heightOf = (g: Glyph) => g.bottomEdge - g.topEdge;
+const median = (v: number[]) =>
+	[...v].sort((a, b) => a - b)[v.length >> 1] as number;
+
+/**
+ * The letters of a run: glyphs at least MIN_CAP_PX tall, without rules, solid dots and other small blobs on the baseline, and
+ * without icons taller than ICON times the median letter.
+ */
+function lettersOf(run: Glyph[]): Glyph[] {
+	const sized = run.filter(
+		(g) =>
+			!g.dot &&
+			heightOf(g) >= MIN_CAP_PX &&
+			g.x1 - g.x0 <= RULE_WIDTH * heightOf(g),
+	);
+	if (sized.length < MIN_GLYPHS) return [];
+	const m = median(sized.map(heightOf));
+	return sized.filter(
+		(g) => heightOf(g) >= SMALL * m && heightOf(g) <= ICON * m,
+	);
 }
 
 function lineOf(run: Glyph[]): TextLine | null {
-	const bottoms = run.map((g) => g.bottomEdge).sort((a, b) => a - b);
-	const baseline = bottoms[bottoms.length >> 1] as number;
-	const top = Math.min(...run.map((g) => g.topEdge));
+	const letters = lettersOf(run);
+	if (letters.length < MIN_GLYPHS) return null;
+	const baseline = median(letters.map((g) => g.bottomEdge));
+	const top = Math.min(...letters.map((g) => g.topEdge));
 	return baseline - top >= MIN_CAP_PX
 		? {
-				x0: Math.min(...run.map((g) => g.x0)),
-				x1: Math.max(...run.map((g) => g.x1)),
+				x0: Math.min(...letters.map((g) => g.x0)),
+				x1: Math.max(...letters.map((g) => g.x1)),
 				top,
 				baseline,
 			}

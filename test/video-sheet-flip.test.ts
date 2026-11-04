@@ -3,10 +3,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { captureMotion } from "../src/capture/index.ts";
+import { pixelLook } from "../src/look/pixels.ts";
+import { capsAt } from "../src/look/type.ts";
 import { renderReport } from "../src/report/report.ts";
 import { draftSpec } from "../src/spec/draft.ts";
 import type { SpecFile } from "../src/spec/schema.ts";
 import { verify } from "../src/verify/index.ts";
+import { readPng } from "../src/verify/pixels.ts";
 import type { Verdict } from "../src/verify/schema.ts";
 import { captureVideo } from "../src/video/index.ts";
 import { type StaticServer, serveRepo } from "./serve.ts";
@@ -29,6 +32,7 @@ describe("video of a page that flips its background while a sheet slides, rebuil
 	let server: StaticServer;
 	let tmp: string;
 	let ref: string;
+	let page: string;
 	let spec: SpecFile;
 	const clones: Record<string, string> = {};
 	const verdicts: Record<string, Verdict> = {};
@@ -46,7 +50,7 @@ describe("video of a page that flips its background while a sheet slides, rebuil
 	beforeAll(async () => {
 		server = await serveRepo();
 		tmp = await mkdtemp(join(tmpdir(), "motionclone sheet-flip-"));
-		const page = await capture("", "page");
+		page = await capture("", "page");
 		const mp4 = join(tmp, "flip.mp4");
 		await encodeFrames(page, mp4, FPS, X264);
 		ref = (
@@ -103,16 +107,32 @@ describe("video of a page that flips its background while a sheet slides, rebuil
 		);
 	});
 
-	it("drafts type sizes from the video's text lines, per region and outside them", () => {
+	it("drafts type sizes from the video's text lines, per region and outside them", async () => {
 		const rows =
 			spec.look?.rows.filter((r) => r.measure === "text-height") ?? [];
-		expect(rows.map((r) => [r.id, r.px])).toEqual([
-			["look.type#1", 17],
-			["look.type#2", expect.closeTo(11.1, 0)],
-			["sheet[0].look.type#1", 14],
-			["sheet[0].look.type#2", expect.closeTo(10, 0)],
+		expect(rows.map((r) => r.id)).toEqual([
+			"look.type#1",
+			"look.type#2",
+			"sheet[0].look.type#1",
+			"sheet[0].look.type#2",
 		]);
 		expect(rows[2]?.lines).toHaveLength(7);
+		// The page's own pixels on the same frame, read the same way: equal sizes on any OS and its fonts.
+		const frame = spec.look?.frames.at(-1)?.frame ?? 0;
+		const own = pixelLook(await readPng(page, frame), {
+			x: 0,
+			y: 0,
+			...PAGE.viewport,
+		}).lines;
+		for (const r of rows) {
+			const caps = capsAt(r.lines, own, PAGE.viewport.height).sort(
+				(a, b) => a - b,
+			);
+			const want = caps[caps.length >> 1] as number;
+			expect(Math.abs((r.px as number) / want - 1)).toBeLessThan(0.05);
+		}
+		const [title, , body] = rows.map((r) => r.px as number);
+		expect((title as number) / (body as number)).toBeGreaterThan(1.1);
 	});
 
 	it("passes a page clone of the same design", () => {
@@ -141,7 +161,8 @@ describe("video of a page that flips its background while a sheet slides, rebuil
 
 	it("fails text 25 % smaller on its type rows and its text score", () => {
 		const v = verdicts.small as Verdict;
-		expect(failingLook("small")).toEqual([
+		// Thinner glyphs also read lighter where the OS draws them thin (Linux: ΔE 8.7), so the main text colour may fail too.
+		expect(failingLook("small").filter((id) => id !== "look.text")).toEqual([
 			"look.type#1",
 			"look.type#2",
 			"sheet[0].look.type#1",
@@ -150,7 +171,7 @@ describe("video of a page that flips its background while a sheet slides, rebuil
 		const body = v.look?.rows.find((r) => r.id === "sheet[0].look.type#1");
 		expect(body?.diff).toBeLessThan(-0.2);
 		expect(body?.message).toMatch(
-			/^sheet\[0\] text cap height [\d.]+ px, want 14 px \(-\d+ %, allowed ±8 %\)$/,
+			/^sheet\[0\] text cap height [\d.]+ px, want [\d.]+ px \(-\d+ %, allowed ±8 %\)$/,
 		);
 		expect(Math.max(...text("small"))).toBeLessThan(0.75);
 		expect(v.look?.structure?.pass).toBe(false);

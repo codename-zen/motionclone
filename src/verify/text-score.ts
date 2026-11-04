@@ -1,5 +1,15 @@
 import type { PNG } from "pngjs";
-import type { FracBox } from "../look/schema.ts";
+import type { FracBox, TypeLine } from "../look/schema.ts";
+import { inBox } from "../look/type.ts";
+
+/** A reference text band with the cap height of its lines, as a share of the frame height, when it has lines. */
+export type TextBand = FracBox & { cap?: number };
+
+// Profiles are smoothed across the line by this share of the band's cap height: weight and the x-height of another
+// family of the same size move ink by less than that, a size 25 % off by more.
+const SMOOTH_CAPS = 0.075;
+// A band without measured lines takes this share of its height as its cap height.
+const CAP_OF_BAND = 0.5;
 
 // Each band is read this much taller on both sides, as a share of its height, so a moved or larger line still shows.
 const PAD = 0.25;
@@ -48,6 +58,38 @@ function resample(v: number[], n: number): number[] {
 	});
 }
 
+/** Gaussian smoothing with sigma in samples. */
+function smooth(v: number[], sigma: number): number[] {
+	if (sigma <= 0) return v;
+	const r = Math.ceil(3 * sigma);
+	return v.map((_, i) => {
+		let sum = 0;
+		let weight = 0;
+		for (let k = Math.max(0, i - r); k <= Math.min(v.length - 1, i + r); k++) {
+			const w = Math.exp(-((k - i) ** 2) / (2 * sigma * sigma));
+			sum += w * (v[k] as number);
+			weight += w;
+		}
+		return sum / weight;
+	});
+}
+
+/** Each band with the median cap height of the reference lines in it; caps in CSS px over a frame `cssHeight` tall. */
+export function withCaps(
+	bands: readonly FracBox[],
+	lines: readonly TypeLine[],
+	cssHeight: number,
+): TextBand[] {
+	return bands.map((b) => {
+		const caps = lines
+			.filter((l) => inBox(l, b))
+			.map((l) => l.cap)
+			.sort((x, y) => x - y);
+		const cap = caps[caps.length >> 1];
+		return cap === undefined ? b : { ...b, cap: cap / cssHeight };
+	});
+}
+
 function cosine(a: number[], b: number[]): number {
 	let ab = 0;
 	let aa = 0;
@@ -63,20 +105,23 @@ function cosine(a: number[], b: number[]): number {
 
 /**
  * How alike the text lines of two frames sit, 0..1: per reference text band, the cosine of the two frames' row
- * profiles (averaged along the line, not blurred across it), weighted by band width. Other words of the same size
- * keep the profile; a smaller or moved line changes it. Null without bands.
+ * profiles (averaged along the line, smoothed across it by 0.075 of its cap height), weighted by band width. Other
+ * words, and another family of the same size, keep the profile; a smaller or moved line changes it. Null without
+ * bands.
  */
 export function textScore(
 	ref: PNG,
 	clone: PNG,
-	bands: readonly FracBox[],
+	bands: readonly TextBand[],
 ): number | null {
 	let sum = 0;
 	let weight = 0;
 	for (const b of bands) {
-		const a = rowProfile(ref, b);
+		const cap = SMOOTH_CAPS * (b.cap ?? CAP_OF_BAND * b.h);
+		const a = smooth(rowProfile(ref, b), cap * ref.height);
 		if (a.length === 0) continue;
-		sum += b.w * cosine(a, resample(rowProfile(clone, b), a.length));
+		const c = smooth(rowProfile(clone, b), cap * clone.height);
+		sum += b.w * cosine(a, resample(c, a.length));
 		weight += b.w;
 	}
 	return weight ? sum / weight : null;

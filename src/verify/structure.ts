@@ -1,12 +1,11 @@
 import type { PNG } from "pngjs";
 import { ssim } from "ssim.js";
-import type { FracBox } from "../look/schema.ts";
 import type { LookFrame } from "../spec/look-schema.ts";
 import { gaussian } from "../video/blur.ts";
 import type { Plane } from "../video/luma.ts";
 import { readPng } from "./pixels.ts";
 import type { StructureFrame, StructureResult } from "./schema.ts";
-import { textScore } from "./text-score.ts";
+import { type TextBand, textScore } from "./text-score.ts";
 
 // Both frames are compared at this width, whatever their pixel sizes.
 const WIDTH = 320;
@@ -83,7 +82,7 @@ export async function structureScore(
 	cloneFrames: number,
 	cssWidth: number,
 	{ blurPx, threshold, textThreshold }: StructureOptions,
-	bands: ReadonlyMap<number, readonly FracBox[]> = new Map(),
+	bands: ReadonlyMap<number, readonly TextBand[]> = new Map(),
 ): Promise<StructureResult> {
 	const out: StructureFrame[] = [];
 	for (const f of frames) {

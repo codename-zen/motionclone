@@ -75,7 +75,12 @@ export const typeSizes = (lines: readonly TypeLine[]): TypeSize[] =>
 // A clone line this many reference cap heights from a reference line can still stand for it: layout moved it.
 const MOVED_CAPS = 3;
 
-const across = (a: TypeLine, b: TypeLine) => a.x < b.x + b.w && b.x < a.x + a.w;
+// Two lines are in one column when they share at least this share of the narrower one's width.
+const SAME_COLUMN = 0.5;
+
+const across = (a: TypeLine, b: TypeLine) =>
+	Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x) >=
+	SAME_COLUMN * Math.min(a.w, b.w);
 
 /** The lines that overlap a line across, top to bottom: its column. */
 const columnOf = (l: TypeLine, all: readonly TypeLine[]) =>

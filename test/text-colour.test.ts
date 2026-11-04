@@ -1,7 +1,6 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { chromium } from "playwright";
 import { PNG } from "pngjs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { captureMotion } from "../src/capture/index.ts";
@@ -31,6 +30,27 @@ function chromatic(png: PNG): number {
 		if (Math.max(r, g, b) - Math.min(r, g, b) > 20) n++;
 	}
 	return n;
+}
+
+// LCD antialiasing tints a glyph's edges: the side where ink rises reddish, the side where it falls bluish.
+const FRINGE = 45;
+
+/** Grayscale text with subpixel-like coloured fringes on its antialiased edge pixels, the same on every OS. */
+function withFringes(png: PNG): PNG {
+	const out = new PNG({ width: png.width, height: png.height });
+	png.data.copy(out.data);
+	const grey = (i: number) => png.data[i] as number;
+	for (let y = 0; y < png.height; y++)
+		for (let x = 1; x < png.width - 1; x++) {
+			const i = (y * png.width + x) * 4;
+			const v = grey(i);
+			if (v < 30 || v > 225) continue;
+			const side = Math.sign(grey(i - 4) - grey(i + 4)) * FRINGE;
+			const clamp = (c: number) => Math.min(255, Math.max(0, c));
+			out.data[i] = clamp(v + side);
+			out.data[i + 2] = clamp(v - side);
+		}
+	return out;
 }
 
 let root: string;
@@ -64,12 +84,18 @@ describe("text colour from pixels", () => {
 	});
 
 	it("leaves out coloured subpixel fringes when the ink is near-neutral", async () => {
-		// The browser's own default: subpixel (LCD) text on Windows, grayscale elsewhere.
-		const browser = await chromium.launch();
-		const tab = await browser.newPage({ viewport: VIEWPORT });
-		await tab.setContent(PAGE);
-		const png = PNG.sync.read(await tab.screenshot());
-		await browser.close();
+		const out = join(root, "fringes");
+		await captureMotion({
+			url: page,
+			outDir: out,
+			viewport: VIEWPORT,
+			durationMs: 100,
+			fps: 30,
+		});
+		const png = withFringes(
+			PNG.sync.read(await readFile(join(out, "frames", "0000.png"))),
+		);
+		expect(chromatic(png)).toBeGreaterThan(500);
 		const text = pixelLook(png, { x: 0, y: 0, ...VIEWPORT }).text;
 		expect(text).toBeTruthy();
 		expect(deltaE(text as string)).toBeLessThan(3);

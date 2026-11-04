@@ -66,6 +66,17 @@ Each reference line is paired with the clone line of the same place in a column 
 So other words keep every pair, and a smaller title that moves the lines under it fails only the title row.
 Matching sizes by role (largest, most text) failed other words on `look-card`: two sizes with similar text width swapped roles.
 
+## Decision: lines are measured from letters
+
+A phone recording reported "summary[0] text cap height 3.9 px, want 15.2 px" against a rebuild with the right type.
+The rebuild's struck-through task word was one glyph (the strike joins its letters), so its line was not found, and three dots of a dotted sun icon formed a line of their own at 3.9 px.
+The reference line of 15.2 px was the struck word measured from the top of the sun icon beside it.
+A line now counts only letters: glyphs at least 4 frame px tall, no wider than 4 times their height (rules and dashes), not solid and nearly square (dots, full stops), at least half and at most 1.6 times the median glyph of their run (small blobs and icons).
+A wide glyph with a thin band of rows its ink covers end to end (90 % of its width) is a struck or underlined word; its letters cannot be told apart, so it is left out.
+Descenders across a line close the gaps between its words, so "Verify" with its joined "fy" no longer splits a line in two.
+Two lines are in one column only when they share half the width of the narrower one, so a short line no longer pairs with an unrelated one above or below.
+On the recording, the struck line and the icon dots give no line now; `summary[0].look.type#1` is the time column (11.5 px against 11.4 px), and all 12 look rows pass.
+
 ## Decision: the text score
 
 The blurred SSIM hides type size: blur that ignores other words also ignores smaller text.
@@ -73,6 +84,17 @@ The structure score now has a second number per rest frame, the text score.
 For each text band of the reference, read 25 % taller on both sides, the row profile is the mean grey distance from the band's median, averaged along the line and not blurred across it.
 The score is the cosine of the reference and clone profiles, weighted by band width; it must reach 0.9.
 Words change where ink sits along a line, not across it, so they keep the profile.
+
+Another font family of the same size moved the profile too.
+A rebuild in Segoe UI of a reference in SF Pro scored 0.881 to 0.888 on its light frames, while its type rows passed; at the larger size where the score passed, a type row failed at +8 %.
+Profiles are now smoothed across the line with a Gaussian of 0.075 times the band's cap height (the median of the reference lines in the band, else half the band height), so weight and x-height differences cancel and a size or position change does not.
+Measured with the smoothing at 0, 0.05, 0.075 and 0.1 cap heights:
+- the phone rebuild (minimum over 8 rest frames): 0.881, 0.917, 0.933, 0.943;
+- `sheet-flip` text 25 % smaller (maximum): 0.583, 0.650, 0.680, 0.702;
+- `sheet-flip` other words (minimum): 0.993, 0.995, 0.996, 0.996.
+
+0.075 keeps the rebuild 0.033 over the threshold and the smaller text far under it, also on Linux, where the smaller text reads 0.675 to 0.736 (0.755 at 0.1).
+Pearson correlation instead of the cosine and weighting bands by their line width were tried; neither separated the two cases better.
 
 ## Decision: one rest detector
 
@@ -131,6 +153,8 @@ The blurred SSIM alone passes the smaller text; the type rows and the text score
 - Text colour from pixels comes from antialiased glyphs: thin light text reads darker or lighter by a few ΔE.
 - Photos inside a block break its flat fill, so that block becomes ink and gets no block row.
 - Fonts are compared by size, weight and family name in `look.json`; only sizes are rows.
+- Struck-through or underlined words, and lines of fewer than three letters, are not measured.
+- Thin text drawn by the OS reads lighter: on Linux, the `sheet-flip` text 25 % smaller also fails the main text colour (ΔE 8.7).
 
 ## Consequences
 

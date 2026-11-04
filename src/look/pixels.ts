@@ -9,11 +9,13 @@ import {
 	surfaces,
 } from "./blocks.ts";
 import { type Lab, labToHex } from "./colour.ts";
-import { inkOf, mainInk } from "./ink.ts";
+import { inkOf, inkSummary, mainInk } from "./ink.ts";
 import { type Grid, gridOf, kmeansPalette, uniformColours } from "./palette.ts";
+import { panelOf } from "./panel.ts";
 import type {
 	Band,
 	Box,
+	FracBox,
 	PixelLook,
 	RegionLook,
 	Swatch,
@@ -30,6 +32,51 @@ const r4 = (v: number) => Math.round(v * 10_000) / 10_000;
 const r1 = (v: number) => Math.round(v * 10) / 10;
 const WHITE: Lab = { l: 100, a: 0, b: 0 };
 
+/** A region's box as fractions of the frame. */
+function frameBox(r: LookRegion, clip: ClipRect, png: PNG): FracBox | null {
+	const f = toFrameRect(r.box, clip, png);
+	return f
+		? {
+				x: f.x0 / png.width,
+				y: f.y0 / png.height,
+				w: (f.x1 - f.x0) / png.width,
+				h: (f.y1 - f.y0) / png.height,
+			}
+		: null;
+}
+
+type Ink = { lab: Lab; weight: number };
+
+/**
+ * Main ink of the text lines that pass `keep`, each read over its letters against `background`: borders and icons
+ * in the same band stay out, and dark text on a white sheet over a dark page is not page colour.
+ */
+function lineInk(
+	png: PNG,
+	lines: readonly TypeLine[],
+	keep: (l: TypeLine) => boolean,
+	background: Lab,
+	cssPerPx: number,
+): { hex: string; share: number } | null {
+	const inks = lines.flatMap((l) => {
+		if (!keep(l)) return [];
+		const y1 = Math.round(l.y * png.height);
+		return (
+			inkOf(
+				png,
+				{
+					x0: Math.round(l.x * png.width),
+					x1: Math.round((l.x + l.w) * png.width),
+					y0: Math.max(0, Math.round(y1 - l.cap / cssPerPx)),
+					y1,
+				},
+				background,
+			) ?? []
+		);
+	});
+	return inkSummary(inks);
+}
+
 function regionLook(
 	png: PNG,
 	grid: Grid,
@@ -38,13 +85,8 @@ function regionLook(
 	lines: readonly TypeLine[],
 ): RegionLook | null {
 	const f = toFrameRect(r.box, clip, png);
-	if (!f) return null;
-	const frame = {
-		x: f.x0 / png.width,
-		y: f.y0 / png.height,
-		w: (f.x1 - f.x0) / png.width,
-		h: (f.y1 - f.y0) / png.height,
-	};
+	const frame = frameBox(r, clip, png);
+	if (!f || !frame) return null;
 	const c = grid.cell;
 	const out: number[] = [];
 	for (
@@ -71,6 +113,13 @@ function regionLook(
 	});
 	const first = fills[0];
 	if (!first) return null;
+	const text = lineInk(
+		png,
+		lines,
+		(l) => inBox(l, frame),
+		first.lab,
+		clip.width / png.width,
+	);
 	return {
 		key: r.key,
 		box: r.box,
@@ -80,6 +129,8 @@ function regionLook(
 			share: r4(u.count / n),
 		})),
 		type: typeSizes(lines.filter((l) => inBox(l, frame))),
+		text: text?.hex ?? null,
+		textShare: text?.share ?? null,
 	};
 }
 
@@ -108,7 +159,7 @@ export function pixelLook(
 			hex: labToHex(labs[s.colour] as Lab),
 			fill: r4(s.fill),
 		}));
-	const inks: { lab: Lab; weight: number }[] = [];
+	const inks: Ink[] = [];
 	const page = labs[0] ?? WHITE;
 	const cellBands = bandsOf(grid, member, Math.ceil(24 / cellCss)).slice(0, 80);
 	const lines = typeLines(
@@ -134,6 +185,20 @@ export function pixelLook(
 			px: r1(b.h * cellCss),
 		};
 	});
+	const looks = regions.flatMap(
+		(r) => regionLook(png, grid, clip, r, lines) ?? [],
+	);
+	const frames = regions.flatMap((r) => frameBox(r, clip, png) ?? []);
+	const outside =
+		looks.length > 0
+			? lineInk(
+					png,
+					lines,
+					(l) => !frames.some((f) => inBox(l, f)),
+					page,
+					clip.width / png.width,
+				)
+			: null;
 	const total = grid.cols * grid.rows;
 	const byColour = new Map<number, number>();
 	for (const s of list)
@@ -146,12 +211,13 @@ export function pixelLook(
 		text: mainInk(inks),
 		palette: kmeansPalette(grid.lab, labs),
 		surfaces: surfaceSwatches,
-		regions: regions.flatMap(
-			(r) => regionLook(png, grid, clip, r, lines) ?? [],
-		),
+		regions: looks,
 		blocks,
 		bands,
 		type: typeSizes(lines),
 		lines,
+		outsideText: outside?.hex ?? null,
+		outsideTextShare: outside?.share ?? null,
+		panel: panelOf(png, blocks, clip.width / png.width),
 	};
 }

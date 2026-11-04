@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>type-ladder</title>
+<style>
+  html, body { margin: 0; background: #fff; color: #16161a; }
+  body { width: 1280px; height: 900px; overflow: hidden; position: relative; font-family: "Segoe UI", system-ui, sans-serif; }
+  html.serif body { font-family: Georgia, serif; }
+  p { position: absolute; left: 40px; margin: 0; line-height: 1; white-space: nowrap; }
+</style>
+<script>
+  // One line per font size from 14 to 24 px in steps of 0.5 px; #serif sets them in a serif face.
+  document.documentElement.className = location.hash.slice(1);
+  addEventListener("DOMContentLoaded", () => {
+    let top = 16;
+    for (let k = 0; k <= 20; k++) {
+      const size = 14 + k / 2;
+      const p = document.createElement("p");
+      p.style.cssText = `top: ${top}px; font-size: ${size}px`;
+      p.textContent = "Morning Walk 7:30 at the Lake, then Breakfast";
+      document.body.append(p);
+      top += Math.round(size * 1.8);
+    }
+  });
+</script>
+</head>
+<body></body>
+</html>

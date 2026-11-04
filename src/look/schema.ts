@@ -74,6 +74,10 @@ export const TypeLine = z.object({
 	y: z.number(),
 	w: z.number(),
 	cap: z.number(),
+	/** `capitals`: the median of its capitals, cap-height digits or ascenders; `x-height`: none, its x-height scaled. */
+	basis: z.enum(["capitals", "ascenders", "x-height"]).default("capitals"),
+	/** Glyphs the cap height is the median of; 0 in older look files. */
+	glyphs: z.number().int().nonnegative().default(0),
 });
 
 /** One text size read from pixels: cap height in CSS px, lines of that size, share of the text's width. */
@@ -90,6 +94,20 @@ export const RegionLook = z.object({
 	palette: z.array(Swatch),
 	/** Text sizes inside the box, largest first; empty in older look files. */
 	type: z.array(TypeSize).default([]),
+	/** Main ink colour of the text lines inside the box; null without text or in older look files. */
+	text: z.string().nullable().default(null),
+	/** Share of the text's ink pixels in that colour, similar inks pooled. */
+	textShare: z.number().nullable().default(null),
+});
+
+/** The widest flat block that is not the background: top edge as a fraction of the screen, top corner radius in CSS px. */
+export const Panel = z.object({
+	hex: z.string(),
+	x: z.number(),
+	w: z.number(),
+	y: z.number(),
+	/** 0 for square corners. */
+	radius: z.number(),
 });
 
 export const PixelLook = z.object({
@@ -105,6 +123,10 @@ export const PixelLook = z.object({
 	type: z.array(TypeSize).default([]),
 	/** Every text line the sizes come from; empty in older look files. */
 	lines: z.array(TypeLine).default([]),
+	/** Main ink colour of the text outside every region; null without regions or text, or in older look files. */
+	outsideText: z.string().nullable().default(null),
+	outsideTextShare: z.number().nullable().default(null),
+	panel: Panel.nullable().default(null),
 });
 
 export const LookState = z.object({
@@ -151,6 +173,7 @@ export type Swatch = z.output<typeof Swatch>;
 export type Block = z.output<typeof Block>;
 export type Band = z.output<typeof Band>;
 export type RegionLook = z.output<typeof RegionLook>;
+export type Panel = z.output<typeof Panel>;
 export type TypeSize = z.output<typeof TypeSize>;
 export type TypeLine = z.output<typeof TypeLine>;
 export type PixelLook = z.output<typeof PixelLook>;

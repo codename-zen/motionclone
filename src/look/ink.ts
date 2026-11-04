@@ -94,8 +94,10 @@ export function inkOf(
 	};
 }
 
-/** The ink colour with the most pixels over all bands, similar inks pooled. */
-export function mainInk(inks: { lab: Lab; weight: number }[]): string | null {
+/** The ink colour with the most pixels over all bands, similar inks pooled, and its share of all ink pixels. */
+export function inkSummary(
+	inks: { lab: Lab; weight: number }[],
+): { hex: string; share: number } | null {
 	const groups: { lab: Lab; weight: number }[] = [];
 	for (const ink of [...inks].sort((a, b) => b.weight - a.weight)) {
 		const g = groups.find((x) => deltaE2000(x.lab, ink.lab) < SAME_INK_DE);
@@ -112,5 +114,15 @@ export function mainInk(inks: { lab: Lab; weight: number }[]): string | null {
 		g.weight = w;
 	}
 	const best = groups.sort((a, b) => b.weight - a.weight)[0];
-	return best ? labToHex(best.lab) : null;
+	const total = groups.reduce((s, g) => s + g.weight, 0);
+	return best
+		? {
+				hex: labToHex(best.lab),
+				share: Math.round((best.weight / total) * 1000) / 1000,
+			}
+		: null;
 }
+
+/** The ink colour with the most pixels over all bands, similar inks pooled. */
+export const mainInk = (inks: { lab: Lab; weight: number }[]): string | null =>
+	inkSummary(inks)?.hex ?? null;

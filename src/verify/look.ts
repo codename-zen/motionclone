@@ -1,8 +1,9 @@
 import { readLook, regionsAt } from "../look/file.ts";
 import { pixelLook } from "../look/pixels.ts";
+import type { PixelLook } from "../look/schema.ts";
 import type { Track } from "../measure/elements.ts";
 import type { CaptureFile } from "../spec/capture-file.ts";
-import { DEFAULT_STRUCTURE } from "../spec/look-schema.ts";
+import { DEFAULT_STRUCTURE, type LookRow } from "../spec/look-schema.ts";
 import type { SpecFile } from "../spec/schema.ts";
 import { type CloneLook, checkLookRow } from "./look-rows.ts";
 import type { MapEntry } from "./map.ts";
@@ -56,28 +57,37 @@ export async function verifyLook(
 			enforced: opts.enforced,
 			rows: [],
 			structure: null,
-			summary: { rows: 0, passed: 0, failed: 0 },
+			summary: { rows: 0, passed: 0, failed: 0, notComparable: 0 },
 			pass: !opts.enforced,
 			skipped:
 				"the spec has no look section: capture the reference with this version and draft the spec again",
 		};
 	const last = look.frames.at(-1);
-	const frame = Math.min(last?.frame ?? 0, x.cloneCap.frames - 1);
 	const clip = x.cloneCap.clip;
-	const needsPixels = look.rows.some((r) => r.method === "pixels");
-	const clone: CloneLook = {
+	// Each row is read on the clone frame with the index of its reference rest frame, per rest state.
+	const frameOf = (r: LookRow) =>
+		Math.min(r.state?.frame ?? last?.frame ?? 0, x.cloneCap.frames - 1);
+	const pixelsAt = new Map<number, PixelLook>();
+	for (const r of look.rows) {
+		const f = frameOf(r);
+		if (r.method !== "pixels" || pixelsAt.has(f)) continue;
+		pixelsAt.set(
+			f,
+			pixelLook(
+				await readPng(x.cloneDir, f),
+				clip,
+				regionsAt(x.cloneTrack.frames[f]),
+			),
+		);
+	}
+	const base: Omit<CloneLook, "pixels"> = {
 		styles: (await readLook(x.cloneDir))?.states.at(-1)?.page ?? null,
-		pixels: needsPixels
-			? pixelLook(
-					await readPng(x.cloneDir, frame),
-					clip,
-					regionsAt(x.cloneTrack.frames[frame]),
-				)
-			: null,
 		screen: { x: clip.x, y: clip.y, w: clip.width, h: clip.height },
 		target: (selector, index) => cloneTarget(x.map, selector, index),
 	};
-	const rows = look.rows.map((r) => checkLookRow(r, clone));
+	const rows = look.rows.map((r) =>
+		checkLookRow(r, { ...base, pixels: pixelsAt.get(frameOf(r)) ?? null }),
+	);
 	// The reference's text bands per rest frame, from its own look.json.
 	const refLook = await readLook(x.refDir);
 	const bands = new Map(
@@ -109,14 +119,20 @@ export async function verifyLook(
 		},
 		bands,
 	);
-	const passed = rows.filter((r) => r.pass).length;
-	const ok = passed === rows.length && structure.pass;
+	const checked = rows.filter((r) => r.comparable);
+	const passed = checked.filter((r) => r.pass).length;
+	const ok = passed === checked.length && structure.pass;
 	return {
 		source: look.source,
 		enforced: opts.enforced,
 		rows,
 		structure,
-		summary: { rows: rows.length, passed, failed: rows.length - passed },
+		summary: {
+			rows: checked.length,
+			passed,
+			failed: checked.length - passed,
+			notComparable: rows.length - checked.length,
+		},
 		pass: ok || !opts.enforced,
 		skipped: null,
 	};

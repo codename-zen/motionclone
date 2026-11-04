@@ -1,28 +1,30 @@
 import type { PNG } from "pngjs";
 import type { CellRect } from "./blocks.ts";
+import { type CapHeight, capHeight, poolWeak } from "./cap-height.ts";
+import { distances, flood } from "./glyph-pixels.ts";
 import { isRuledWord } from "./rules.ts";
+import {
+	evenHeights,
+	type Glyph,
+	heightOf,
+	MIN_GLYPHS,
+	median,
+	runsOf,
+} from "./runs.ts";
 
 /** One text line read from pixels, in frame pixels. */
 export interface TextLine {
 	x0: number;
 	x1: number;
-	/** Top edge of its tallest glyph that sits on the baseline (a capital or an ascender), sub-pixel. */
+	/** Baseline minus the cap height, sub-pixel. */
 	top: number;
 	/** Bottom edge of the glyphs that sit on the line (their median), descenders left out, sub-pixel. */
 	baseline: number;
-}
-
-interface Glyph {
-	x0: number;
-	x1: number;
-	/** Rows of the half-contrast extent: top row and the row under the last one. */
-	top: number;
-	bottom: number;
-	/** The same edges with sub-pixel precision, interpolated where the ink crosses half its contrast. */
-	topEdge: number;
-	bottomEdge: number;
-	/** A solid, nearly square blob: a dot of an icon or a full stop, never a letter. */
-	dot: boolean;
+	basis: CapHeight["basis"];
+	/** Glyphs the cap height is the median of. */
+	glyphs: number;
+	/** Most common letter height, frame px. */
+	x: number;
 }
 
 // Pixels this far from the band's background (largest channel difference) may be ink.
@@ -31,8 +33,6 @@ const MIN_INK = 24;
 const EDGE_SHARE = 0.5;
 // Glyphs whose bottoms lie this close (frame px) sit on one baseline; round letters overshoot it a little.
 const BASELINE_PX = 1;
-// A line has at least this many glyphs on its baseline; icons and rules stand alone.
-const MIN_GLYPHS = 3;
 const MIN_CAP_PX = 4;
 // Glyphs on a baseline under this share of the median letter are dots and commas; over ICON times it, icons.
 const SMALL = 0.5;
@@ -41,79 +41,6 @@ const ICON = 1.6;
 const RULE_WIDTH = 4;
 // Ink filling this share of a nearly square glyph's box makes it a dot: letters have holes, stems or bowls.
 const DOT_FILL = 0.8;
-// Glyphs of one line further apart than this many cap heights are separate lines, such as text in two cards.
-const WORD_GAP = 1.5;
-
-/** Largest channel difference of each pixel from the most common colour of the rectangle. */
-function distances(png: PNG, x0: number, y0: number, x1: number, y1: number) {
-	const w = x1 - x0;
-	const px = (x: number, y: number) => (y * png.width + x) * 4;
-	const bins = new Map<number, number>();
-	for (let y = y0; y < y1; y++)
-		for (let x = x0; x < x1; x++) {
-			const p = px(x, y);
-			const key =
-				((png.data[p] as number) >> 4) * 256 +
-				((png.data[p + 1] as number) >> 4) * 16 +
-				((png.data[p + 2] as number) >> 4);
-			bins.set(key, (bins.get(key) ?? 0) + 1);
-		}
-	let key = 0;
-	let most = -1;
-	for (const [k, n] of bins)
-		if (n > most) {
-			most = n;
-			key = k;
-		}
-	const bg = [key >> 8, (key >> 4) & 15, key & 15].map((v) => v * 16 + 8);
-	const d = new Float32Array(w * (y1 - y0));
-	for (let y = y0; y < y1; y++)
-		for (let x = x0; x < x1; x++) {
-			const p = px(x, y);
-			let m = 0;
-			for (let c = 0; c < 3; c++)
-				m = Math.max(
-					m,
-					Math.abs((png.data[p + c] as number) - (bg[c] as number)),
-				);
-			d[(y - y0) * w + x - x0] = m;
-		}
-	return d;
-}
-
-/** Pixels connected to `start` that pass `ok`, marking each in `mark`; diagonal neighbours count when `diagonal`. */
-function flood(
-	start: number,
-	w: number,
-	h: number,
-	ok: (j: number) => boolean,
-	mark: Uint8Array,
-	diagonal: boolean,
-): number[] {
-	const stack = [start];
-	const pixels: number[] = [];
-	mark[start] = 1;
-	while (stack.length) {
-		const i = stack.pop() as number;
-		pixels.push(i);
-		const x = i % w;
-		const y = (i - x) / w;
-		for (let dy = -1; dy <= 1; dy++)
-			for (let dx = -1; dx <= 1; dx++) {
-				if ((dx === 0 && dy === 0) || (!diagonal && dx !== 0 && dy !== 0))
-					continue;
-				const nx = x + dx;
-				const ny = y + dy;
-				if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
-				const j = ny * w + nx;
-				if (!mark[j] && ok(j)) {
-					mark[j] = 1;
-					stack.push(j);
-				}
-			}
-	}
-	return pixels;
-}
 
 /**
  * Glyphs with their half-contrast extents, in rectangle coordinates. Ink is joined at a low level first, then split
@@ -171,11 +98,22 @@ function glyphsOf(d: Float32Array, w: number, h: number): Glyph[] {
 				const outer = Math.min(at(col, outside), inner);
 				return inner > outer ? (inner - half) / (inner - outer) : 0;
 			};
+			// Ink across the top fifth of the glyph: wide for capitals, a stem for t and ascenders.
+			const topRows = g.top + Math.max(1, Math.round(0.2 * (g.bottom - g.top)));
+			let tx0 = g.x1;
+			let tx1 = g.x0;
+			for (const k of part) {
+				const x = k % w;
+				if ((k - x) / w >= topRows) continue;
+				tx0 = Math.min(tx0, x);
+				tx1 = Math.max(tx1, x + 1);
+			}
 			const box = (g.x1 - g.x0) * (g.bottom - g.top);
 			const aspect = (g.x1 - g.x0) / (g.bottom - g.top);
 			out.push({
 				...g,
 				dot: part.length >= DOT_FILL * box && aspect >= 0.6 && aspect <= 1.6,
+				topWidth: (tx1 - tx0) / (g.x1 - g.x0),
 				topEdge: g.top + 0.5 - edge(g.top, g.top - 1),
 				bottomEdge: g.bottom - 0.5 + edge(g.bottom - 1, g.bottom),
 			});
@@ -185,7 +123,12 @@ function glyphsOf(d: Float32Array, w: number, h: number): Glyph[] {
 }
 
 /** Lines of glyphs that share a baseline, the most crowded baseline first. */
-function linesOf(glyphs: Glyph[]): TextLine[] {
+// `even`: only lines whose letters all have one height (a row of numbers), for glyphs pooled across bands.
+function linesOf(
+	glyphs: Glyph[],
+	leftover: Glyph[] = [],
+	even = false,
+): TextLine[] {
 	const out: TextLine[] = [];
 	let left = glyphs;
 	while (left.length >= MIN_GLYPHS) {
@@ -212,34 +155,17 @@ function linesOf(glyphs: Glyph[]): TextLine[] {
 				(g.top < base && g.bottom > top && g.x1 > x0 && g.x0 < x1),
 		);
 		for (const run of runsOf(taken, on, base - top)) {
-			const line = lineOf(run);
+			const line =
+				even && !evenHeights(lettersOf(run.on))
+					? null
+					: lineOf(run.on, run.off);
 			if (line) out.push(line);
 		}
 		left = left.filter((g) => !taken.includes(g));
 	}
+	leftover.push(...left);
 	return out;
 }
-
-// Glyphs on one baseline, split where neighbours are further apart than WORD_GAP cap heights: columns, cards.
-// Descenders across the line (`taken`) close gaps too, so a word like "fy" does not split its line.
-function runsOf(taken: Glyph[], on: Glyph[], cap: number): Glyph[][] {
-	const sorted = [...taken].sort((a, b) => a.x0 - b.x0);
-	const runs: Glyph[][] = [];
-	let end = Number.NEGATIVE_INFINITY;
-	for (const g of sorted) {
-		const run = runs.at(-1);
-		if (run && g.x0 - end <= WORD_GAP * cap) run.push(g);
-		else runs.push([g]);
-		end = Math.max(end, g.x1);
-	}
-	return runs
-		.map((r) => r.filter((g) => on.includes(g)))
-		.filter((r) => r.length >= MIN_GLYPHS);
-}
-
-const heightOf = (g: Glyph) => g.bottomEdge - g.topEdge;
-const median = (v: number[]) =>
-	[...v].sort((a, b) => a - b)[v.length >> 1] as number;
 
 /**
  * The letters of a run: glyphs at least MIN_CAP_PX tall, without rules, solid dots and other small blobs on the baseline, and
@@ -259,20 +185,46 @@ function lettersOf(run: Glyph[]): Glyph[] {
 	);
 }
 
-function lineOf(run: Glyph[]): TextLine | null {
+// `off` holds the glyphs across the line that do not sit on its baseline: descenders, commas, icons.
+function lineOf(run: Glyph[], off: Glyph[]): TextLine | null {
 	const letters = lettersOf(run);
 	if (letters.length < MIN_GLYPHS) return null;
 	const baseline = median(letters.map((g) => g.bottomEdge));
-	const top = Math.min(...letters.map((g) => g.topEdge));
-	return baseline - top >= MIN_CAP_PX
+	const descenders = off
+		.filter((g) => g.bottomEdge > baseline + BASELINE_PX && !g.dot)
+		.map((g) => baseline - g.topEdge);
+	const lead = letters.reduce((a, g) => (g.x0 < a.x0 ? g : a));
+	const cap = capHeight(
+		letters.map((g) => ({
+			first: g === lead,
+			height: baseline - g.topEdge,
+			aspect: (g.x1 - g.x0) / heightOf(g),
+			topWidth: g.topWidth,
+		})),
+		descenders,
+	);
+	return cap && cap.cap >= MIN_CAP_PX
 		? {
 				x0: Math.min(...letters.map((g) => g.x0)),
 				x1: Math.max(...letters.map((g) => g.x1)),
-				top,
+				top: baseline - cap.cap,
 				baseline,
+				basis: cap.basis,
+				glyphs: cap.glyphs,
+				x: cap.x,
 			}
 		: null;
 }
+
+const shifted = (g: Glyph, dx: number, dy: number): Glyph => ({
+	...g,
+	x0: g.x0 + dx,
+	x1: g.x1 + dx,
+	top: g.top + dy,
+	bottom: g.bottom + dy,
+	topEdge: g.topEdge + dy,
+	bottomEdge: g.bottomEdge + dy,
+});
 
 /** Text lines inside bands of ink cells, read at full frame resolution. */
 export function textLines(
@@ -280,7 +232,8 @@ export function textLines(
 	bands: readonly CellRect[],
 	cell: number,
 ): TextLine[] {
-	return bands.flatMap((band) => {
+	const leftover: Glyph[] = [];
+	const lines = bands.flatMap((band) => {
 		const x0 = Math.max(0, (band.x - 1) * cell);
 		const x1 = Math.min(png.width, (band.x + band.w + 1) * cell);
 		const y0 = Math.max(0, (band.y - 1) * cell);
@@ -288,11 +241,25 @@ export function textLines(
 		if (x1 <= x0 || y1 <= y0) return [];
 		const w = x1 - x0;
 		const glyphs = glyphsOf(distances(png, x0, y0, x1, y1), w, y1 - y0);
-		return linesOf(glyphs).map((l) => ({
+		const left: Glyph[] = [];
+		const found = linesOf(glyphs, left);
+		leftover.push(...left.map((g) => shifted(g, x0, y0)));
+		return found.map((l) => ({
+			...l,
 			x0: x0 + l.x0,
 			x1: x0 + l.x1,
 			top: y0 + l.top,
 			baseline: y0 + l.baseline,
+			cap: l.baseline - l.top,
 		}));
 	});
+	// Glyphs left over in several bands can still share a baseline: a row of dates, one or two digits a band.
+	const across = linesOf(leftover, [], true).map((l) => ({
+		...l,
+		cap: l.baseline - l.top,
+	}));
+	return poolWeak([...lines, ...across]).map(({ cap, ...l }) => ({
+		...l,
+		top: l.baseline - cap,
+	}));
 }

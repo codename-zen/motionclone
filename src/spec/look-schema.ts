@@ -41,7 +41,21 @@ export const LOOK_MEASURES = [
 	"region-background",
 	"block",
 	"text-height",
+	"region-text-colour",
+	"outside-text-colour",
+	"panel-edge",
+	"panel-radius",
 ] as const;
+
+/** Corner radii read from pixels err by more than sizes do: antialiasing and continuous corners. */
+export const RADIUS_TOLERANCE = 0.2;
+
+/** A rest state of the reference: its name ("light", "dark") and the rest frame its rows are read from. */
+export const LookStateRef = z.object({
+	name: z.string(),
+	frame: z.number().int().nonnegative(),
+	t: z.number(),
+});
 
 export const LookRow = z.object({
 	id: z.string(),
@@ -73,6 +87,8 @@ export const LookRow = z.object({
 		.default([]),
 	tolerances: LookTolerances.prefault({}),
 	notes: z.array(z.string()).default([]),
+	/** The rest state the row describes, when the reference rests in more than one; null means the last rest frame. */
+	state: LookStateRef.nullable().default(null),
 });
 
 export const LookFrame = z.object({
@@ -83,7 +99,7 @@ export const LookFrame = z.object({
 
 export const LookSpec = z.object({
 	source: z.enum(["page", "video"]),
-	/** Reference rest frames: rows describe the last one, the structure score compares all. */
+	/** Reference rest frames: rows describe the last one of each rest state, the structure score compares all. */
 	frames: z.array(LookFrame),
 	structure: z
 		.object({
@@ -104,3 +120,4 @@ export type LookRow = z.output<typeof LookRow>;
 export type LookMeasure = LookRow["measure"];
 export type LookSpec = z.output<typeof LookSpec>;
 export type LookFrame = z.output<typeof LookFrame>;
+export type LookStateRef = z.output<typeof LookStateRef>;

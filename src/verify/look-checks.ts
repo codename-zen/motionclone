@@ -7,12 +7,16 @@ import type { LookRowVerdict } from "./schema.ts";
 const fixed = (v: number, d = 1) => Number(v.toFixed(d));
 const pct = (v: number) => `${v > 0 ? "+" : ""}${Math.round(v * 100)} %`;
 
-type Base = Pick<LookRowVerdict, "id" | "label" | "measure" | "method">;
+type Base = Pick<
+	LookRowVerdict,
+	"id" | "label" | "measure" | "method" | "comparable"
+>;
 const base = (r: LookRow): Base => ({
 	id: r.id,
 	label: r.label,
 	measure: r.measure,
 	method: r.method,
+	comparable: true,
 });
 
 export function missing(r: LookRow, why: string): LookRowVerdict {
@@ -26,6 +30,15 @@ export function missing(r: LookRow, why: string): LookRowVerdict {
 		tol: 0,
 		unit: "tolerance",
 		message: `${r.label}: ${why}`,
+	};
+}
+
+/** A row the clone's content cannot be compared with, such as other words in place of a text line: never fails. */
+export function notComparable(r: LookRow, why: string): LookRowVerdict {
+	return {
+		...missing(r, `not comparable: ${why}`),
+		pass: true,
+		comparable: false,
 	};
 }
 
@@ -68,6 +81,31 @@ export function sizeVerdict(r: LookRow, got: number): LookRowVerdict {
 		message: pass
 			? `${r.label} ${fixed(got, 2)} px matches ${want} px`
 			: `${r.label} ${fixed(got, 2)} px, want ${want} px (${pct(rel)}, allowed ±${Math.round(tol * 100)} %)`,
+	};
+}
+
+/** A top edge, as a fraction of the screen height, against the row's within the position tolerance. */
+export function edgeVerdict(
+	r: LookRow,
+	got: number,
+	screen: Screen,
+): LookRowVerdict {
+	const want = (r.box as FracBox).y;
+	const d = got - want;
+	const tol = r.tolerances.position;
+	const pass = Math.abs(d) <= tol + 1e-9;
+	const px = (v: number) => `y ${Math.round(v * screen.h)} px`;
+	return {
+		...base(r),
+		pass,
+		want: px(want),
+		got: px(got),
+		diff: fixed(Math.abs(d) / (tol || 1), 2),
+		tol: 1,
+		unit: "tolerance",
+		message: pass
+			? `${r.label} at ${px(got)} matches ${px(want)}`
+			: `${r.label} at ${px(got)}, want ${px(want)} (${fixed(d * 100)} % of the screen, allowed ±${fixed(tol * 100)} %)`,
 	};
 }
 

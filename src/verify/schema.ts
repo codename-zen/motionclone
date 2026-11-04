@@ -63,6 +63,8 @@ export const LookRowVerdict = z.object({
 	unit: z.enum(["deltaE", "relative", "tolerance"]),
 	/** A fix instruction with both numbers when failing; what matched when passing. */
 	message: z.string(),
+	/** False when the clone's content offers nothing to compare, such as no text line in the place of one: never fails. */
+	comparable: z.boolean().default(true),
 });
 
 export const StructureFrame = z.object({
@@ -96,6 +98,8 @@ export const LookResult = z.object({
 		rows: z.number().int(),
 		passed: z.number().int(),
 		failed: z.number().int(),
+		/** Rows the clone's content could not be compared with; not counted in `rows`. */
+		notComparable: z.number().int().default(0),
 	}),
 	pass: z.boolean(),
 	skipped: z.string().nullable(),

@@ -5,6 +5,7 @@
 <title>sheet-flip</title>
 <script>
   // #fade, #small and #words are rebuilds of the plain page: a 260 ms background fade, text 25 % smaller, other words.
+  // #grey, #square and #short change the dark state only: a grey background, square corners, a sheet 40 px lower.
   document.documentElement.className = location.hash.slice(1);
 </script>
 <style>
@@ -15,6 +16,8 @@
   html.fade body { animation: dark 260ms linear 400ms forwards, light 260ms linear 1700ms forwards; }
   @keyframes dark { from { background-color: #fff; } to { background-color: #111114; } }
   @keyframes light { from { background-color: #111114; } to { background-color: #fff; } }
+  html.grey body { animation-name: grey, light; }
+  @keyframes grey { from { background-color: #fff; } to { background-color: #3a3a42; } }
 
   .top { position: absolute; left: 32px; top: 30px; color: #8a8a90; font-size: calc(22px * var(--k)); font-weight: 600; }
   .top span { display: block; font-size: calc(15px * var(--k)); font-weight: 500; margin-top: 4px; }
@@ -27,6 +30,10 @@
     animation-composition: add; }
   @keyframes down { from { translate: 0 0; } to { translate: 0 440px; } }
   @keyframes up { from { translate: 0 0; } to { translate: 0 -440px; } }
+  html.square .sheet { border-radius: 0; }
+  html.low .sheet { animation-name: down-low, up-low; }
+  @keyframes down-low { from { translate: 0 0; } to { translate: 0 480px; } }
+  @keyframes up-low { from { translate: 0 0; } to { translate: 0 -480px; } }
   .grip { position: absolute; left: 280px; top: 10px; width: 40px; height: 5px; border-radius: 3px; background: #c9c9cf; }
   .task { position: absolute; left: 24px; width: 552px; height: 64px; border-bottom: 1px solid #ececf0; }
   .task .tick { position: absolute; left: 4px; top: 18px; width: 24px; height: 24px; border-radius: 50%; border: 3px solid #c4c4cc; box-sizing: border-box; }

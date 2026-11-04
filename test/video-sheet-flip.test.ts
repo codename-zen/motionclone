@@ -108,8 +108,11 @@ describe("video of a page that flips its background while a sheet slides, rebuil
 	});
 
 	it("drafts type sizes from the video's text lines, per region and outside them", async () => {
+		// Rows of the last rest state; the dark state has its own (test/look-states.test.ts).
 		const rows =
-			spec.look?.rows.filter((r) => r.measure === "text-height") ?? [];
+			spec.look?.rows.filter(
+				(r) => r.measure === "text-height" && !r.id.startsWith("dark."),
+			) ?? [];
 		expect(rows.map((r) => r.id)).toEqual([
 			"look.type#1",
 			"look.type#2",
@@ -162,12 +165,16 @@ describe("video of a page that flips its background while a sheet slides, rebuil
 	it("fails text 25 % smaller on its type rows and its text score", () => {
 		const v = verdicts.small as Verdict;
 		// Thinner glyphs also read lighter where the OS draws them thin (Linux: ΔE 8.7), so the main text colour may fail too.
-		expect(failingLook("small").filter((id) => id !== "look.text")).toEqual([
+		const last = failingLook("small").filter((id) => !id.startsWith("dark."));
+		expect(last.filter((id) => id !== "look.text")).toEqual([
 			"look.type#1",
 			"look.type#2",
 			"sheet[0].look.type#1",
 			"sheet[0].look.type#2",
 		]);
+		expect(failingLook("small")).toEqual(
+			expect.arrayContaining(["dark.look.type#1", "dark.sheet[0].look.type#1"]),
+		);
 		const body = v.look?.rows.find((r) => r.id === "sheet[0].look.type#1");
 		expect(body?.diff).toBeLessThan(-0.2);
 		expect(body?.message).toMatch(

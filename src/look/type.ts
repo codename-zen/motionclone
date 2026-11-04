@@ -24,6 +24,8 @@ export const typeLines = (
 		y: r4(l.baseline / png.height),
 		w: r4((l.x1 - l.x0) / png.width),
 		cap: r1((l.baseline - l.top) * cssPerPx),
+		basis: l.basis,
+		glyphs: l.glyphs,
 	}));
 
 export const inBox = (l: TypeLine, b: FracBox) =>
@@ -94,10 +96,16 @@ export const ranked = (l: TypeLine, all: readonly TypeLine[]): RankedLine => {
 
 export type RankedLine = TypeLine & { rank: number; count: number };
 
+/** True when two lines share rows: the band from cap top to baseline of one overlaps the other's. */
+const sameRows = (a: TypeLine, b: TypeLine, screenHeight: number) =>
+	Math.min(a.y, b.y) >
+	Math.max(a.y - a.cap / screenHeight, b.y - b.cap / screenHeight);
+
 /**
  * Cap heights of the clone's lines in the places of the reference's lines. A column with as many lines as the
  * reference's pairs them in order, so a line moved by a larger or smaller line above it is still found; otherwise the
- * clone line nearest the reference baseline stands for it. Either way within MOVED_CAPS cap heights.
+ * clone line nearest the reference baseline that shares rows with it stands for it. Either way within MOVED_CAPS cap
+ * heights. A reference line with no such line in the clone gets none: other words, not another size.
  */
 export function capsAt(
 	want: readonly RankedLine[],
@@ -113,7 +121,7 @@ export function capsAt(
 		let gap = limit;
 		for (const c of column) {
 			const d = Math.abs(c.y - r.y);
-			if (d <= gap) {
+			if (d <= gap && sameRows(c, r, screenHeight)) {
 				best = c;
 				gap = d;
 			}

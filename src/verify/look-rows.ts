@@ -16,12 +16,14 @@ import {
 	blockVerdict,
 	boxVerdict,
 	colourVerdict,
+	edgeVerdict,
 	missing,
+	notComparable,
 	sizeVerdict,
 } from "./look-checks.ts";
 import type { LookRowVerdict } from "./schema.ts";
 
-/** What the clone shows on the reference's last rest frame, read the way the reference was. */
+/** What the clone shows on the reference's rest frame of a row, read the way the reference was. */
 export interface CloneLook {
 	/** Null when the clone capture has no style record. */
 	styles: PageStyles | null;
@@ -102,16 +104,36 @@ function pixelValue(
 				r,
 				[...p.surfaces, ...p.palette].map((s) => s.hex),
 			);
-		case "region-background": {
+		case "region-background":
+		case "region-text-colour": {
 			const key = r.target ? `${r.target.selector}[${r.target.index}]` : "";
 			const reg = p.regions.find((x) => x.key === key);
-			return reg
-				? colourVerdict(r, reg.background)
+			if (!reg)
+				return missing(
+					r,
+					`${key} is not tracked in the clone; capture it with --track and --map`,
+				);
+			if (r.measure === "region-background")
+				return colourVerdict(r, reg.background);
+			return reg.text
+				? colourVerdict(r, reg.text)
+				: missing(r, `the clone shows no text lines in ${key}`);
+		}
+		case "outside-text-colour":
+			return p.outsideText
+				? colourVerdict(r, p.outsideText)
+				: missing(r, "the clone shows no text lines outside the regions");
+		case "panel-edge":
+			return p.panel
+				? edgeVerdict(r, p.panel.y, clone.screen)
 				: missing(
 						r,
-						`${key} is not tracked in the clone; capture it with --track and --map`,
+						`the clone shows no ${r.colour} panel across the screen near y ${Math.round((r.box?.y ?? 0) * clone.screen.h)} px`,
 					);
-		}
+		case "panel-radius":
+			return p.panel
+				? sizeVerdict(r, p.panel.radius)
+				: missing(r, "the clone shows no panel whose corners can be read");
 		case "block":
 			return blockVerdict(
 				r,
@@ -125,11 +147,8 @@ function pixelValue(
 			const caps = capsAt(r.lines, p.lines, clone.screen.h).sort(
 				(a, b) => a - b,
 			);
-			if (caps.length * 2 < r.lines.length)
-				return missing(
-					r,
-					`the clone has ${caps.length} of the reference's ${r.lines.length} text lines of this size in their places`,
-				);
+			if (caps.length === 0)
+				return notComparable(r, "no matching text line in the clone");
 			return sizeVerdict(r, caps[caps.length >> 1] as number);
 		}
 		default:

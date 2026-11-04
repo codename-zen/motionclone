@@ -43,7 +43,7 @@ A Chrome attached with `--cdp-url` keeps its own text settings.
 
 ## Decision: spec rows
 
-`spec.json` gets a `look` section, separate from motion rows, drafted from the reference's last rest state.
+`spec.json` gets a `look` section, separate from motion rows, drafted from the reference's last rest state (and, since the decision on rest states below, from each rest state).
 A page reference gets rows read from computed styles: page background, main text colour, up to three accent colours (background colours other than the page's, by area), the title font size (largest type) and body font size (most characters), per tracked element its box, font size and text colour when it has its own text, background when its own is opaque, radius when it has a surface or border, and up to eight untracked blocks (elements whose own background stands out from what is behind them and covers at least 0.5 % of the screen).
 A video reference gets rows read from pixels: page background, main text colour, accents (surface colours by area), type sizes, each region's background and type sizes, and up to eight blocks.
 Tolerances: CIEDE2000 6 for colours, 3 for backgrounds, sizes 8 % relative, positions 3 % of the screen width or height.
@@ -76,6 +76,56 @@ A wide glyph with a thin band of rows its ink covers end to end (90 % of its wid
 Descenders across a line close the gaps between its words, so "Verify" with its joined "fy" no longer splits a line in two.
 Two lines are in one column only when they share half the width of the narrower one, so a short line no longer pairs with an unrelated one above or below.
 On the recording, the struck line and the icon dots give no line now; `summary[0].look.type#1` is the time column (11.5 px against 11.4 px), and all 12 look rows pass.
+
+## Decision: cap height from capitals
+
+A rebuild in Segoe UI read 16 px of cap height at 19.5 px type, 12.7 at 17.5 and 14 at 18.5, so its font size was tuned by trial and error.
+A line's cap height ran to its tallest glyph, which was an ascender, a hooked f or an icon depending on the words.
+It is now read per line from glyph classes:
+- letter heights over the baseline split into classes where neighbours differ by more than 3.5 % and 0.35 frame px;
+- the class with the most letters is the x-height (or the capitals of a line in capitals);
+- capitals are letters at least 1.15 x-heights tall that are wide at the top (ink across 60 % of their width in their top fifth) and not a bare stem (width under 0.3 of the height), plus a first letter at least 1.25 x-heights tall;
+- t and the ascenders of b, d, h, k have only a stem at the top, and serif or hooked ascenders (Georgia l, f) stand taller than the capitals, so the lowest class holding a third of the capitals is the cap height;
+- a line without capitals uses its x-height divided by 0.71; a line of one height with no descender as high is capitals or digits;
+- a line with no two letters of one height (signal bars, icons) is no line.
+  A line read from one glyph or from its x-height takes the median cap height of the frame's lines with the same x-height, when there are three or more.
+  Each line records its basis (`capitals` or `x-height`) and the number of glyphs; type row notes give both.
+  On `fixtures/type-ladder` (one line per size, 14 to 24 px in steps of 0.5 px, against the ink ascent of "H" from the canvas) every size reads within 0.1 px in Segoe UI and Georgia at 1x and 1.5x, never smaller than the size before.
+  The same ladder in lowercase with one capital reads within 1.4 px (ascenders) and stays monotonic.
+  On `sheet-flip` every 19 px task title reads 13 px, the ink ascent of its capitals; "Send the draft" alone read 14 px (its f) and "Call the bakery" 14.1 px (its x-height) before the lines of one x-height were pooled.
+
+## Decision: other content is not another size
+
+On the phone recording `dark.sheet[0].look.type#1` (the reference's two-digit dates, 15.9 px) failed against the rebuild's labels (7.4 px).
+The rebuild's dates were mostly one digit; each date sat in a band of its own with fewer than three glyphs, so it was no line, and the nearest baseline within three cap heights stood in.
+Two changes:
+- glyphs left over in their bands are pooled across bands and read again; short runs on one baseline join into a line when their glyphs differ in height by under 6 % and lie at most 6 glyph heights apart;
+- the nearest-baseline fallback only takes a clone line that shares rows with the reference line (their bands from cap top to baseline overlap); the same row of a column of as many lines still pairs as before.
+  A row with no clone line left is not comparable: `comparable: false`, it passes, it is not counted in the look summary (`notComparable` counts it) and the report lists it under "Not comparable".
+  A line whose only tall glyph is one ascender, with no capital and no neighbour of its x-height, is dropped: blurred small capitals split into pieces and read 7.4 px for 8.7 px labels.
+  A line of letters of one height uses all of them, so noise that splits small capitals into classes no longer picks the lower half.
+  On `fixtures/date-strip` (video reference, page clones), one-digit dates pass every type row, and text 25 % smaller fails every compared type row.
+  On the phone recording the rebuild's dates are now read: 18.1 px against 16.1 px (light) and 15.9 px (dark), so both rows fail by 12 and 14 %, a real difference (the rebuild sets them in 25 px type).
+
+## Decision: rest states
+
+Rows described only the last rest state, so a dark state between two light ones was checked by the structure score alone.
+Rest frames are now grouped by background: frames more than ΔE 10 apart are different states, named `light` or `dark` by their background's lightness (`dark2` for a second dark one).
+With one group nothing changes.
+With more, each group gets rows from its latest rest frame (the last frame for the last group), and every row carries `state` with the name, frame and time.
+Rows of the last group keep their ids and labels; the others are prefixed, `dark.look.background`, and labelled "page background (dark, rest at 1196 ms)".
+Page references keep style rows for the last state and get pixel rows for the others.
+Verify reads each row on the clone frame with the index of its state's frame, the way the structure score pairs frames.
+
+From pixels, every state also gets:
+- the text colour per region and outside the regions (`sheet[0].look.text`, `look.outside.text`), read over the letters of each line against the region's own background, when one colour holds 60 % of the ink;
+- the large panel: the widest flat block that is not the page, at least 60 % of the screen wide and 10 % tall, with its top edge to a sub-pixel (where the colour crosses from what is above it to the panel's, up to its first full pixel) within ±3 % of the screen, and its corner radius within ±20 %.
+  The radius comes from each row of the top corners: an inset `i` at depth `d` under the edge lies on a circle of radius `i + d + sqrt(2 i d)`; the median of both corners.
+  Blocks the colour of what surrounds them (the page, or a larger block they lie in) get no row: only a hairline border makes them blocks, and a video blurs it wider than a crisp rebuild draws it.
+
+On `sheet-flip` the dark state reads background `#111113`, the panel edge at 536 px (CSS 536) and a radius of 28.4 px (CSS 28).
+A page clone passes all its rows; a grey dark state fails only `dark.look.background`, square corners only `dark.look.panel.radius`, a sheet 40 px lower `dark.look.panel.top` and other dark rows; none of them fails a row of the light state.
+On the phone recording the dark state reads the panel at 577 px with a 42.4 px radius; the rebuild (CSS radius 40) reads 576 px and 40 px.
 
 ## Decision: the text score
 
@@ -147,13 +197,15 @@ The blurred SSIM alone passes the smaller text; the type rows and the text score
 
 ## Limits
 
-- Video references get no radius or font rows, and type sizes are cap heights, not font sizes; a note gives the font size a cap height of 0.7 em would mean.
+- Video references get no font rows and a radius row only for the large panel; type sizes are cap heights, not font sizes, and a note gives the font size a cap height of 0.7 em would mean.
 - A rebuild that wraps text into more lines in a column is paired by nearest baseline there, which can pair a line with one of another size.
-- Rows describe the last rest state; earlier states are covered by the structure score only.
+- Rest states are told apart by background colour only; two states of one background (a panel open and closed on the same page) share the rows of the later one.
+- A line whose only capital is round (C, S, O) and that has no neighbour of the same x-height may read its ascenders, about 6 % over the capitals.
+- Region and outside text colours are rows only when one colour holds 60 % of the text; mixed text is left to the eye.
 - Text colour from pixels comes from antialiased glyphs: thin light text reads darker or lighter by a few ΔE.
 - Photos inside a block break its flat fill, so that block becomes ink and gets no block row.
 - Fonts are compared by size, weight and family name in `look.json`; only sizes are rows.
-- Struck-through or underlined words, and lines of fewer than three letters, are not measured.
+- Struck-through or underlined words, and lines of fewer than three letters (unless a row of them shares a baseline), are not measured.
 - Thin text drawn by the OS reads lighter: on Linux, the `sheet-flip` text 25 % smaller also fails the main text colour (ΔE 8.7).
 
 ## Consequences
@@ -162,3 +214,4 @@ The blurred SSIM alone passes the smaller text; the type rows and the text score
 - `SpecFile.look` and `Verdict.look` are new, nullable and default to null, so older files still parse.
 - `Verdict.fidelity` accepts `look`.
 - `PixelLook.type`, `RegionLook.type`, the `text-height` look measure, `structure.textThreshold` and the structure's `text` and `minText` are new and default to empty or null, so older files still parse.
+- `TypeLine.basis` and `glyphs`, `RegionLook.text` and `textShare`, `PixelLook.outsideText`, `outsideTextShare` and `panel`, `LookRow.state` and the measures `region-text-colour`, `outside-text-colour`, `panel-edge` and `panel-radius` are new with defaults, so older files still parse; a look.json written before them gives none of the new rows.

@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>date-strip</title>
+<script>
+  // #one shows one-digit dates where the page has two; #small sets every text 25 % smaller.
+  document.documentElement.className = location.hash.slice(1);
+</script>
+<style>
+  html { margin: 0; --k: 1; }
+  html.small { --k: 0.75; }
+  body { margin: 0; width: 600px; height: 400px; overflow: hidden; position: relative; background: #fff; color: #1d1d22; font-family: system-ui, sans-serif; }
+  h1 { position: absolute; left: 32px; top: 24px; margin: 0; font-size: calc(28px * var(--k)); font-weight: 600; }
+  .strip { position: absolute; left: 16px; top: 120px; width: 568px; height: 90px; display: flex; justify-content: space-between; }
+  .day { width: 72px; text-align: center; }
+  .day b { display: block; font-size: calc(24px * var(--k)); font-weight: 500; color: #8a8a90; }
+  .day i { display: block; font-style: normal; margin-top: 8px; font-size: calc(12px * var(--k)); color: #6e6c6e; }
+  p { position: absolute; left: 32px; top: 260px; margin: 0; font-size: calc(18px * var(--k)); }
+</style>
+</head>
+<body>
+  <h1>Week of the River</h1>
+  <div class="strip"></div>
+  <p>Plan the weekend trip with Anna</p>
+  <script>
+    const names = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
+    const first = document.documentElement.classList.contains("one") ? 3 : 23;
+    document.querySelector(".strip").innerHTML = names
+      .map((n, i) => `<div class="day"><b>${first + i}</b><i>${n}</i></div>`)
+      .join("");
+  </script>
+</body>
+</html>

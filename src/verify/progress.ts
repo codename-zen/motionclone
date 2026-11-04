@@ -8,6 +8,7 @@ import {
 	measureProgress,
 	type ProgressWindow,
 	type Rect,
+	type Span,
 } from "../pixel/measure.ts";
 import { elementKey, fitMotion } from "../spec/motion.ts";
 import { isSwitchWindow } from "../spec/progress-row.ts";
@@ -90,21 +91,29 @@ export async function measurePixelRows(
 	rows: readonly SpecRow[],
 	frame: Rect | null = null,
 ): Promise<Map<string, CloneMotion>> {
-	const regions = new Map<string, Rect>();
+	// Rows read between two backdrop flips are read between the same times on the clone.
+	const keyOf = (r: SpecRow) =>
+		`${elementKey(r.selector, r.index)}${r.within ? `|${r.within.firstMs}|${r.within.lastMs}` : ""}`;
+	const regions = new Map<string, { rect: Rect; span: Span | null }>();
 	for (const r of rows) {
-		const key = elementKey(r.selector, r.index);
 		const region =
 			r.selector === FRAME ? frame : elementRegion(track, r.selector, r.index);
-		if (region && !regions.has(key)) regions.set(key, region);
+		if (region && !regions.has(keyOf(r)))
+			regions.set(keyOf(r), { rect: region, span: r.within ?? null });
 	}
 	const keys = [...regions.keys()];
-	const measured = await measureProgress(dir, track, clip, [
-		...regions.values(),
-	]);
+	const list = [...regions.values()];
+	const measured = await measureProgress(
+		dir,
+		track,
+		clip,
+		list.map((r) => r.rect),
+		list.map((r) => r.span),
+	);
 	const windows = new Map(keys.map((k, i) => [k, measured[i]?.windows ?? []]));
 	const out = new Map<string, CloneMotion>();
 	for (const r of rows) {
-		const w = pick(windows.get(elementKey(r.selector, r.index)) ?? [], r);
+		const w = pick(windows.get(keyOf(r)) ?? [], r);
 		const c = w ? motionOf(r, w) : null;
 		if (c) out.set(r.id, c);
 	}

@@ -93,6 +93,19 @@ export interface TimeBounds {
 	frameMs: number;
 }
 
+/** Bounds narrowed to the times a motion cannot reach past, when it has any. */
+export function withinOf(
+	b: TimeBounds | undefined,
+	within: { firstMs: number; lastMs: number } | undefined,
+): TimeBounds | undefined {
+	if (!within || !b) return b;
+	return {
+		firstMs: Math.max(b.firstMs, within.firstMs),
+		lastMs: Math.min(b.lastMs, within.lastMs),
+		frameMs: b.frameMs,
+	};
+}
+
 const msText = (v: number) => `${Math.round(v * 10) / 10} ms`;
 
 /**

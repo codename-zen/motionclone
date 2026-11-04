@@ -2,7 +2,15 @@ import { acquire, changed } from "./acquire.ts";
 import { type ColourReading, poseOf, readColour } from "./colour.ts";
 import type { Rgba } from "./luma.ts";
 import type { Frame } from "./match.ts";
-import { type Judgement, judge, MIN_SHAPE_CONTRAST } from "./quality.ts";
+import { backdropFlipped } from "./polarity.ts";
+import {
+	type Judgement,
+	judge,
+	MAX_CONTRAST,
+	MIN_CONTRAST,
+	MIN_NCC,
+	MIN_SHAPE_CONTRAST,
+} from "./quality.ts";
 import type { Method, RegionSample } from "./samples.ts";
 import {
 	clampScale,
@@ -99,10 +107,41 @@ function templateFit(
 	return ok ? { m: a.fit, j: a.judgement } : { m, j };
 }
 
+/**
+ * Where the backdrop around the element flipped between light and dark, the element itself flips too: white text
+ * on a dark theme. Match it with light and dark swapped, near the colour box or the prediction.
+ */
+function invertedFit(
+	s: State,
+	f: Frame,
+	pred: Pose,
+): { m: Fit; j: Judgement } | null {
+	let m = search(f, s.inverse, pred, s.lock);
+	if (m.contrast < MIN_SHAPE_CONTRAST)
+		m = place(f, s.inverse, { ...m, s: s.pose.s, blur: s.pose.blur });
+	const j = judge(m, s.noise);
+	const jump = Math.abs(Math.log(m.s / pred.s)) > MAX_SCALE_STEP * MAX_GAP;
+	if (isFound(j.status) && !jump) return { m, j };
+	// Mid-fade, a part that does not fade (an icon beside the text) leaves the shape short of a match: at the
+	// expected place, a clear correlation still reads the contrast, as a faint reading.
+	const held = place(f, s.inverse, { ...pred, s: s.pose.s, blur: s.pose.blur });
+	const clear =
+		held.ncc >= MIN_NCC &&
+		held.contrast >= MIN_CONTRAST &&
+		held.contrast <= MAX_CONTRAST;
+	return clear
+		? { m: held, j: { status: "faint", quality: judge(held, s.noise).quality } }
+		: null;
+}
+
 export function step(s: State, f: Frame, rgba: Rgba, k: number) {
 	const reading = s.colour ? readColour(s.colour, rgba) : null;
 	const cp = reading ? colourPose(s, reading) : null;
 	let { m, j } = templateFit(s, f, cp, k);
+	const at = cp ?? predict(s);
+	const flipped = backdropFlipped(s.backdrop, f.full, s.model.win, at);
+	const inverted = flipped && !isFound(j.status) ? invertedFit(s, f, at) : null;
+	if (inverted) ({ m, j } = inverted);
 	let { status, quality } = j;
 	let method: Method = "none";
 	let opacity = isFound(status) ? Math.min(1, Math.max(0, m.contrast)) : 0;
@@ -148,6 +187,8 @@ export function step(s: State, f: Frame, rgba: Rgba, k: number) {
 		quality: Math.round(quality * 1000) / 1000,
 		status,
 		method,
+		flipped,
+		inverted: inverted !== null,
 	});
 	if (found) {
 		const shaped = status === "found";

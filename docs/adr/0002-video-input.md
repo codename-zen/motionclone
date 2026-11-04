@@ -303,6 +303,56 @@ Automatic regions give a sheet region that finds all 450 frames, with slides fro
 The recording repeats frames and moves the strip 165 CSS px between two frames early in each slide back up, so durations there are less certain than starts.
 Tracking that region takes about 19 s, as before.
 
+## Decision: surface edges
+
+On the Joi recording (a phone screen recording of a sheet that slides down to reveal a dark summary) the region over the sheet locks onto the week strip riding on the sheet.
+The sheet's own white surface moves differently: its top edge sits about 26 CSS px above the strip in the dark state and about 70 px above it in the light state, and it reaches its rests at other times than the strip.
+Verify passed 37 of 37 rows while a side-by-side showed the surface stretching, because no row described it; the coverage report only said "untracked motion" over most of the screen.
+After tracking, each region whose element travels at least 8 CSS px gets a band: the columns its boxes cover (rows for a sideways move), and along the axis its travel plus one box size on each side.
+On every frame, a surface edge is a boundary across the middle half of the band where the luma steps by at least 24 levels, averaged over 3 px on each side, on at least 75 % of the lines read across it, while one side is flat (90 % of the lines within 12 levels of their median).
+Text the surface slides past hides the step on some lines; the flat side keeps text baselines and icons from counting.
+Of the edges on a frame, the one nearest the element's box is kept.
+The edge becomes its own tracked element, `<region>::edge`, when it moves apart from the element (its offset to the element's box varies by more than 3 px or 5 % of the travel), travels between half and twice as far as the element, and its positions correlate with the element's (at least 0.9).
+An edge that rides rigidly on its content, such as the sheet in sheet-flip, gets nothing, and a capture warning names every edge that is tracked.
+Where the edge does not show while the element rests (a white sheet on a white page), it takes its offset to the element from frames that show it at a rest in the same place.
+Otherwise it holds the position that a frame right beside such a rest shows, from the frame where the element has left its rest the least: the frame where the page switched while a trailing edge had not moved yet.
+Held positions are observed positions with quality 0, so they pin the rows' ends without counting as samples; frames where the element moves and the edge does not show have no box.
+The box runs from the edge across the element at rest, so coverage counts the surface between them as tracked.
+Spec drafting gives `<region>::edge[0].y` rows like any tracked element; look and progress rows leave it out.
+`capture.json` does not list it among the tracked selectors, so the clone needs no selector for it.
+Verify measures the clone's edge the same way (ADR 0004): the reference's band placed on the clone's captured area, next to the clone's element mapped to the region, on the clone's frames.
+A clone that tracks `<region>::edge` itself, with `--map`, answers for it directly.
+
+On `fixtures/_variants/sheet-stretch` (a panel that slides 440 px down over 380 ms easeInOutCubic and up over 240 ms, carrying content that slides over 300 ms easeOutCubic), recorded as h264 crf 18 with a region over the content:
+- `sheet::edge[0].y` runs 96 to 536 from 400.3 ms over 379.5 ms, easeInOutCubic, and back from 1701.8 ms over 283 ms, both high confidence; the content's rows keep their 300 ms;
+- a page clone of the same page passes both edge rows; a clone whose panel moves with its content fails both and nothing else.
+
+On the Joi recording the frame where the page switches shows the light-state sheet top at 95.7 CSS px, above the header, so the edge travels 484 px against the strip's 440.6.
+Its rows run from 624.3 ms over 197.8 ms (easeOutSine), 2642.7 ms over 113 ms, 4768.4 ms over 211.2 ms and 6980 ms over 162.9 ms; the strip's run 226.5, 178.9, 213 and 193.4 ms.
+
+## Decision: inverted backdrops
+
+On the same recording, white header text on the dark page read opacity 0 on every dark frame: its template is dark text on white, and the match of inverted contrast is negative.
+So the dark state's fade-in and fade-out of the header had no rows.
+Each region records the luma of a 2 px ring around its window at the reference frame and how far its own pixels swing (3rd to 97th percentile).
+On a frame where the ring around the predicted window has moved by at least half that swing, the backdrop is flipped (`flipped: true` on the element in `track.json`).
+Where the template then fails, the same template with light and dark swapped is searched near the prediction.
+When its shape still falls short (a dot beside the text keeps full contrast while the text fades), a correlation of at least 0.5 at the expected place reads the contrast as a faint reading.
+Inverted readings are scaled to the strongest contrast they hold for six frames, so a white header at full strength on the dark page reads 1.
+Opacity is contrast against what is behind the element, so its series is cut where the backdrop flips.
+Each piece is drafted on its own, its fit cannot start or end beyond the flips (`within` on the row), and an unexplained reading on a flipped backdrop is no reading rather than a 0 bound.
+Between two flips, with the element holding still, progress rows are read in the element's box on the frames strictly between the flips.
+Text whose colour fades leaves up to 0.06 of blend residual there (glyph edges are drawn with a gamma that follows the text colour), so the limit is 0.1 instead of 0.05.
+The opacity rows and these progress rows are cross-checked as in ADR 0005.
+Verify reads the clone's pixel rows that carry `within` between the same times.
+
+On sheet-stretch (the page dark from 400 to 2100 ms, the header fading in linearly from 400 to 600 ms and out from 1700 to 1790 ms):
+- the header reads opacity 1 on the light page and on the dark page, and 0.27 to 0.94 during the fade-in;
+- `header[0].progress` runs from the first dark frame, 412.1 ms, over 193.1 ms, linear, and `header[0].progress#2` from 1699.2 ms over 90.1 ms, linear; the opacity rows that the dot distorts drop to low;
+- a clone that shows and hides the header at once fails both progress rows and nothing else.
+
+On the Joi recording the header now reads 0.2, 0.21, 0.36, 0.51, 0.63, 0.75 and 0.89 on its first dark frames, which a brightest-pixel reading of the same frames (51 to 254 levels) agrees with.
+
 ## Decision: cloning a recording with --like
 
 `--like <videoCaptureDir>` used to take only fps, duration and a load trigger, so a clone of a phone recording was captured at 1280x800 and scale 1, and every look check failed (background ΔE 92.6, SSIM 0.25) until the viewport was set by hand; the density could not be matched at all.
@@ -359,6 +409,9 @@ A static, uniform band inside the screen that matches the bezel colour, or a scr
   ADR 0003 covers how spec drafting and verify now handle such partly observed rows.
 - The opacity proxy also reads the context ring around the element, so a background that changes around an opaque element lowers it: on expand-in-grid the first template frame under the fading dim reads 0.90, and the draft holds an opacity row from 0.9 to 1 that the page does not have.
 - Colour-only changes are invisible to the tracker, because it works on luma and ignores brightness scaling.
+- A surface edge is found only where it steps by 24 luma levels or more against what is around it; a white sheet on a white page shows no edge, and its position at rest is held as described above or left empty.
+- A surface edge seen only while it moves has rows only for what shows; its motion behind a page switch is not seen.
+- When a surface also leaves an element's box during a fade on a flipped backdrop, the fade gets no progress row and keeps only the tracker's opacity row.
 - The colour box assumes a sharp, opaque element: blur or fading erodes its edges, so the reading shrinks or fails, and an element whose colours also appear elsewhere in the region, or that is partly covered, has no valid colour reading.
 - Merging the two ends needs frames both tracks found; a cross-fade between two different contents with no such frame keeps the other end's frames out.
 - Overlapping elements: when another moving element enters the template area, the match follows whichever dominates; declare tighter regions or crop.

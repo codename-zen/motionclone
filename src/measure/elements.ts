@@ -25,6 +25,8 @@ export interface MovingProperty {
 	series: Series;
 	/** 1 for the first of several motions of this property separated by rests, 2 for the next; absent when it moves once. */
 	ordinal?: number;
+	/** Times the motion cannot reach past: the backdrop flips it was cut at (ADR 0002). */
+	within?: { firstMs: number; lastMs: number };
 }
 
 // Smallest total range that counts as movement, per property unit.
@@ -51,6 +53,44 @@ const AXIS: Partial<Record<Property, "w" | "h">> = {
 	y: "h",
 	height: "h",
 };
+
+/**
+ * Opacity on a video frame is contrast against what is behind the element; where light and dark swap there (a
+ * theme switch), it is read against another backdrop, so the series is cut there into separate pieces.
+ */
+function cutAtFlips(
+	track: Track,
+	selector: string,
+	index: number,
+	series: Series,
+): { part: Series; within?: MovingProperty["within"] }[] {
+	const flips = new Set<number>();
+	let prev: boolean | undefined;
+	for (const f of track.frames) {
+		const e = f.elements[selector]?.find((x) => x.index === index);
+		if (e?.flipped === undefined) continue;
+		if (prev !== undefined && e.flipped !== prev) flips.add(f.t);
+		prev = e.flipped;
+	}
+	if (flips.size === 0) return [{ part: series }];
+	const parts: Series[] = [[]];
+	for (const p of series) {
+		if (flips.has(p[0]) && (parts.at(-1) as Series).length > 0) parts.push([]);
+		(parts.at(-1) as Series).push(p);
+	}
+	// A flip falls between two frames: the motion may run up to the frame on the other side of it.
+	return parts.map((part, i) => ({
+		part,
+		within: {
+			firstMs:
+				i > 0 ? (part[0]?.[0] ?? 0) - track.frameMs : Number.NEGATIVE_INFINITY,
+			lastMs:
+				i < parts.length - 1
+					? (part.at(-1)?.[0] ?? 0) + track.frameMs
+					: Number.POSITIVE_INFINITY,
+		},
+	}));
+}
 
 export async function readTrack(dir: string): Promise<Track> {
 	return JSON.parse(await readFile(join(dir, "track.json"), "utf8")) as Track;
@@ -88,15 +128,26 @@ export function movingProperties(
 						: 1;
 				const size =
 					axis && firstBox && scale > 0 ? firstBox[axis] / scale : undefined;
-				const pieces = split
-					? splitAtRests(series, MIN_RANGE[property])
-					: [series];
+				const parts =
+					property === "opacity"
+						? cutAtFlips(track, selector, index, series)
+						: [{ part: series }];
+				const pieces = parts.flatMap(({ part, within }) =>
+					(split ? splitAtRests(part, MIN_RANGE[property]) : [part]).map(
+						(piece) => ({ piece, within }),
+					),
+				);
 				// Snaps are told apart only between motions; a lone there-and-back move stays whole.
 				const found = pieces
-					.map((p) => (pieces.length > 1 ? afterSnap(p) : p))
-					.flatMap((piece) => {
+					.map((p) => ({
+						...p,
+						piece: pieces.length > 1 ? afterSnap(p.piece) : p.piece,
+					}))
+					.flatMap(({ piece, within }) => {
 						const window = motionWindow(piece, { size });
-						return window ? [{ window, series: piece }] : [];
+						return window
+							? [{ window, series: piece, ...(within ? { within } : {}) }]
+							: [];
 					});
 				for (const [k, f] of found.entries())
 					out.push({

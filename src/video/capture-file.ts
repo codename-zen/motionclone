@@ -24,6 +24,12 @@ export interface ClippedTravel {
 /** CSS pixels per output frame pixel. */
 export const cssPerFramePx = (r: ExtractResult) => 1 / (r.scale * r.cssScale);
 
+/** The page size a recording stands for, CSS px. */
+export const videoViewport = (r: ExtractResult) => ({
+	width: Math.max(1, Math.round(r.crop.w / r.cssScale)),
+	height: Math.max(1, Math.round(r.crop.h / r.cssScale)),
+});
+
 /** capture.json readable by spec drafting and verify, plus a `video` section with the extraction settings. */
 export async function writeVideoCaptureFile(
 	r: ExtractResult,
@@ -33,10 +39,7 @@ export async function writeVideoCaptureFile(
 		clipped,
 	}: { track: string[]; warnings: string[]; clipped: ClippedTravel[] },
 ): Promise<void> {
-	const viewport = {
-		width: Math.max(1, Math.round(r.crop.w / r.cssScale)),
-		height: Math.max(1, Math.round(r.crop.h / r.cssScale)),
-	};
+	const viewport = videoViewport(r);
 	const durationMs = Math.round((r.end - r.start) * 1000 * 1000) / 1000;
 	await writeFile(
 		join(r.outDir, "capture.json"),

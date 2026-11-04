@@ -8,8 +8,10 @@ import {
 	type ClippedTravel,
 	cssPerFramePx,
 	frameTimeMs,
+	videoViewport,
 	writeVideoCaptureFile,
 } from "./capture-file.ts";
+import { trackSurfaceEdges } from "./edges.ts";
 import { type ExtractResult, extractFrames } from "./extract.ts";
 import { ExtractOptions, parseRegionName, Region } from "./options.ts";
 import { type RegionSample, type RegionTrack, sampleBox } from "./samples.ts";
@@ -127,6 +129,7 @@ function element(
 			opacity: s.status !== "other" && !placedOnly,
 		},
 		clipped: s.clipped,
+		flipped: s.flipped,
 	};
 }
 
@@ -210,10 +213,13 @@ export async function captureVideo(
 			]),
 		),
 	}));
-	await writeFile(
-		join(dir, "track.json"),
-		json({ selectors: names, frameMs: ex.frameMs, frames }),
+	const track = await trackSurfaceEdges(
+		dir,
+		{ selectors: names, frameMs: ex.frameMs, frames },
+		{ x: 0, y: 0, ...videoViewport(ex) },
+		warnings,
 	);
+	await writeFile(join(dir, "track.json"), json(track));
 	await writeFile(
 		join(dir, "animations.json"),
 		json({

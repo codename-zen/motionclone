@@ -1,6 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { readTrack } from "../measure/elements.ts";
+import { withCloneEdges } from "../pixel/clone-edges.ts";
 import { frameRegion } from "../pixel/region.ts";
 import { readAnimations, readCaptureFile } from "../spec/capture-file.ts";
 import { observationModel } from "../spec/observe.ts";
@@ -107,7 +108,13 @@ export async function verify(
 	let coverage: Coverage | null = null;
 	let look: Verdict["look"] = null;
 	if (errors.length === 0) {
-		const renamed = renameTrack(cloneTrack, map);
+		const renamed = await withCloneEdges(
+			clone,
+			renameTrack(cloneTrack, map),
+			cloneCap.clip,
+			refTrack,
+			refCap.clip,
+		);
 		const idx = indexClone(renamed, renameAnimations(cloneAnimations, map));
 		// Video distances are CSS px; the region box and the element box differ in size, so a relative distance would not compare.
 		const specRows = video

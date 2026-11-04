@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>sheet-stretch</title>
+<script>
+  // The plain page: a white panel trails its content going down and leads it going up, and the header fades in on dark.
+  // #rigid moves the panel with its content; #instant shows and hides the header at once instead of fading it.
+  document.documentElement.className = location.hash.slice(1);
+</script>
+<style>
+  html { margin: 0; overflow: hidden; }
+  body { margin: 0; width: 600px; height: 1032px; overflow: hidden; position: relative; font-family: system-ui, sans-serif; background: #fff;
+    animation: dark 1ms steps(1, start) 400ms forwards, light 1ms steps(1, start) 2100ms forwards; }
+  @keyframes dark { from { background-color: #fff; } to { background-color: #111114; } }
+  @keyframes light { from { background-color: #111114; } to { background-color: #fff; } }
+
+  /* One 2800 ms timeline: dark ink, then hidden on the dark page at 400 ms, fading in until 600 ms, out from 1700 to 1790 ms, dark again at 2100 ms. */
+  .hdr { position: absolute; left: 32px; top: 24px; height: 52px; font-size: 44px; font-weight: 700; line-height: 52px; color: #111;
+    animation: hdr 2800ms linear forwards; }
+  @keyframes hdr { 0%, 14.285% { color: #111; } 14.29% { color: #111114; } 21.43%, 60.71% { color: #f4f4f6; } 63.93%, 75% { color: #111114; } 75.005%, 100% { color: #111; } }
+  html.instant .hdr { animation-name: hdr-instant; }
+  @keyframes hdr-instant { 0%, 14.285% { color: #111; } 14.29%, 60.71% { color: #f4f4f6; } 60.715%, 75% { color: #111114; } 75.005%, 100% { color: #111; } }
+  .hdr i { display: inline-block; width: 26px; height: 26px; margin-left: 14px; border-radius: 50%; background: #e8574a; vertical-align: 2px; }
+
+  .panel { position: absolute; left: 0; top: 96px; width: 600px; height: 1400px; border-radius: 28px 28px 0 0; background: #fff;
+    animation: down 380ms cubic-bezier(0.65, 0, 0.35, 1) 400ms forwards, up 240ms cubic-bezier(0.2, 0.9, 0.3, 1) 1700ms forwards;
+    animation-composition: add; }
+  .sheet { position: absolute; left: 0; top: 126px; width: 600px; height: 1300px; color: #1d1d22;
+    animation: down 300ms cubic-bezier(0.33, 1, 0.68, 1) 400ms forwards, up 300ms cubic-bezier(0.33, 1, 0.68, 1) 1700ms forwards;
+    animation-composition: add; }
+  html.rigid .panel { animation: down 300ms cubic-bezier(0.33, 1, 0.68, 1) 400ms forwards, up 300ms cubic-bezier(0.33, 1, 0.68, 1) 1700ms forwards; }
+  @keyframes down { from { translate: 0 0; } to { translate: 0 440px; } }
+  @keyframes up { from { translate: 0 0; } to { translate: 0 -440px; } }
+  .task { position: absolute; left: 24px; width: 552px; height: 64px; border-bottom: 1px solid #ececf0; }
+  .task .tick { position: absolute; left: 4px; top: 18px; width: 24px; height: 24px; border-radius: 50%; border: 3px solid #c4c4cc; box-sizing: border-box; }
+  .task p { position: absolute; left: 48px; top: 10px; margin: 0; font-size: 19px; }
+  .task small { position: absolute; left: 48px; top: 36px; font-size: 14px; color: #8a8a90; }
+</style>
+</head>
+<body>
+  <div class="panel"></div>
+  <div class="hdr">Fri<i></i></div>
+  <div class="sheet">
+    <div class="task" style="top: 0"><div class="tick"></div><p>Water the plants</p><small>08:00 at home</small></div>
+    <div class="task" style="top: 64px"><div class="tick"></div><p>Send the draft</p><small>09:30 at work</small></div>
+    <div class="task" style="top: 128px"><div class="tick"></div><p>Call the bakery</p><small>11:00 errand</small></div>
+    <div class="task" style="top: 192px"><div class="tick"></div><p>Review pull request</p><small>13:15 at work</small></div>
+    <div class="task" style="top: 256px"><div class="tick"></div><p>Book train tickets</p><small>18:30 errand</small></div>
+    <div class="task" style="top: 320px"><div class="tick"></div><p>Read two chapters</p><small>21:00 at home</small></div>
+    <div class="task" style="top: 384px"><div class="tick"></div><p>Plan the weekend</p><small>21:30 at home</small></div>
+  </div>
+</body>
+</html>

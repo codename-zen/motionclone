@@ -89,6 +89,8 @@ export interface TrackedElement {
 	observed?: ObservedValues;
 	/** Video tracks only: the region cut the element's travel on this frame (ADR 0002). */
 	clipped?: boolean;
+	/** Video tracks only: light and dark around the element are swapped against its reference frame (ADR 0002). */
+	flipped?: boolean;
 }
 
 export interface ObservedValues {

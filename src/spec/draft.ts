@@ -1,7 +1,7 @@
 import { writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import type { AnimationRecord } from "../capture/types.ts";
-import type { TimeBounds } from "../fit/plausible.ts";
+import { type TimeBounds, withinOf } from "../fit/plausible.ts";
 import {
 	type MovingProperty,
 	readTrack,
@@ -52,7 +52,7 @@ function draftRow(
 	noise: number,
 	bounds: TimeBounds,
 ): SpecRow {
-	const fit = fitMotion(m, bounds);
+	const fit = fitMotion(m, withinOf(bounds, m.within));
 	const notes: string[] = [];
 	const declared = matchDeclared(m, fit, animations, cap.frameMs, notes);
 	const easing = declared?.easing ?? candidateEasing(fit.best);
@@ -180,6 +180,9 @@ function draftRows(
 		const row = fit
 			? partialRow(m, observed, fit, noise)
 			: draftRow(m, observed, animations, cap, noise, bounds);
+		const within = withinOf(bounds, m.within);
+		if (m.within && within)
+			row.within = { firstMs: within.firstMs, lastMs: within.lastMs };
 		return clippedDistance(row, track, clipped);
 	});
 }

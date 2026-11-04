@@ -4,7 +4,7 @@ import {
 	type PartialTrack,
 	visibleChange,
 } from "../fit/joint.ts";
-import type { TimeBounds } from "../fit/plausible.ts";
+import { type TimeBounds, withinOf } from "../fit/plausible.ts";
 import type { Hint, Observation } from "../fit/types.ts";
 import type { MovingProperty } from "../measure/elements.ts";
 import { bezierEasing } from "./easing.ts";
@@ -60,14 +60,18 @@ const leadOf = (items: readonly PartialItem[]) => {
 	return anchors.length > 0 ? anchors : items;
 };
 
-const hintOf = (items: readonly PartialItem[], ctx: Context): Hint => ({
-	startMs: Math.min(...items.map((i) => i.m.window.startMs)),
-	endMs: Math.max(...items.map((i) => i.m.window.endMs)),
-	frameMs: ctx.frameMs,
-	...(ctx.clip
-		? { clip: { firstMs: ctx.clip.firstMs, lastMs: ctx.clip.lastMs } }
-		: {}),
-});
+const hintOf = (items: readonly PartialItem[], ctx: Context): Hint => {
+	const clip = items.reduce(
+		(b, i) => withinOf(b, i.m.within),
+		ctx.clip as TimeBounds | undefined,
+	);
+	return {
+		startMs: Math.min(...items.map((i) => i.m.window.startMs)),
+		endMs: Math.max(...items.map((i) => i.m.window.endMs)),
+		frameMs: ctx.frameMs,
+		...(clip ? { clip: { firstMs: clip.firstMs, lastMs: clip.lastMs } } : {}),
+	};
+};
 
 /**
  * The change a track shows: its plain readings, or the box positions the tracker filled in before it saw the

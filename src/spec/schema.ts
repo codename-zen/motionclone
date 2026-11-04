@@ -106,6 +106,11 @@ export const SpecRow = z.object({
 	stagger: z.object({ after: z.string(), gapMs: z.number() }).nullable(),
 	tolerances: Tolerances.prefault({}),
 	notes: z.array(z.string()).default([]),
+	/**
+	 * Trigger-relative ms the row was measured between, exclusive: the backdrop behind the element swaps light and
+	 * dark on the frames at both ends (ADR 0002), so verify measures the clone between them too.
+	 */
+	within: z.object({ firstMs: z.number(), lastMs: z.number() }).optional(),
 });
 
 export const StillEntry = z.object({

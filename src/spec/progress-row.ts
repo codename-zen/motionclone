@@ -1,6 +1,6 @@
 import type { Series } from "../measure/series.ts";
 import { motionWindow } from "../measure/window.ts";
-import type { ProgressWindow, Rect } from "../pixel/measure.ts";
+import type { ProgressWindow, Rect, Span } from "../pixel/measure.ts";
 import { supportOf } from "./confidence.ts";
 import { START_SLACK_MS } from "./cross-check.ts";
 import { curveDeviation } from "./deviation.ts";
@@ -49,6 +49,8 @@ export interface ProgressSource {
 	ordinal: number;
 	region: Rect;
 	window: ProgressWindow;
+	/** Set when the change was read between two backdrop flips. */
+	span?: Span;
 }
 
 const box = (r: Rect) =>
@@ -145,6 +147,12 @@ export function progressRow(
 		},
 		notes: [
 			`appearance progress from pixels in ${box(src.region)} (CSS px), between rest frames ${w.fromFrame} (${Math.round(w.fromMs)} ms) and ${w.toFrame} (${Math.round(w.toMs)} ms); mean RGB change ${w.distance.toFixed(1)}${isSwitchWindow(w) ? "; a near-instant switch" : ""}`,
+			...(src.span
+				? [
+						`read between ${Math.round(src.span.firstMs)} and ${Math.round(src.span.lastMs)} ms, where light and dark behind the element are swapped`,
+					]
+				: []),
 		],
+		...(src.span ? { within: { ...src.span } } : {}),
 	};
 }

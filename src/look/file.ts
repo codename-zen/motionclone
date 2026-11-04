@@ -1,6 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { TrackFrame } from "../capture/types.ts";
+import { isEdge } from "../pixel/surface.ts";
 import type { LookRegion } from "./pixels.ts";
 import { LOOK_FILE, LookFile } from "./schema.ts";
 
@@ -22,10 +23,10 @@ export async function readLook(dir: string): Promise<LookFile | null> {
 	}
 }
 
-/** Every tracked element's box on one frame, keyed like spec rows: "sel[i]". */
+/** Every tracked element's box on one frame, keyed like spec rows: "sel[i]"; surface edges are positions, not looks. */
 export const regionsAt = (frame: TrackFrame | undefined): LookRegion[] =>
 	Object.entries(frame?.elements ?? {}).flatMap(([sel, list]) =>
-		list
+		(isEdge(sel) ? [] : list)
 			.filter((e) => e.w > 0 && e.h > 0)
 			.map((e) => ({
 				key: `${sel}[${e.index}]`,

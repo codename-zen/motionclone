@@ -2,6 +2,7 @@ import type { ColourModel } from "./colour.ts";
 import type { Plane, Rgba } from "./luma.ts";
 import type { Frame, Rect } from "./match.ts";
 import { TemplateModel } from "./model.ts";
+import { type Backdrop, backdropOf } from "./polarity.ts";
 import { measureNoise, type Status } from "./quality.ts";
 import type { NamedRect } from "./regions.ts";
 import type { RegionSample, RegionTrack } from "./samples.ts";
@@ -48,6 +49,8 @@ export interface RegionPlan {
 export interface State {
 	region: RegionTrack;
 	model: TemplateModel;
+	/** The model with light and dark swapped, tried where the backdrop flipped. */
+	inverse: TemplateModel;
 	/** Box centre in the reference frame, and its offset from the window centre that scales with the element. */
 	home: { x: number; y: number };
 	offset: { x: number; y: number };
@@ -69,6 +72,8 @@ export interface State {
 	start: Pose;
 	lock: Lock;
 	noise: number;
+	/** Backdrop luma around the window at the reference, and the template's swing; see polarity.ts. */
+	backdrop: Backdrop;
 }
 
 export const expand = (r: Rect, m: number, p: Plane): Rect => {
@@ -113,11 +118,14 @@ export function initState(
 		centroid: null,
 		energy: 0,
 		clipped: false,
+		flipped: false,
+		inverted: false,
 	}));
 	const home = { x: box.x + box.w / 2, y: box.y + box.h / 2 };
 	const centre = { x: win.x + win.w / 2, y: win.y + win.h / 2 };
 	const cb = colour?.box ?? box;
 	const pose = { cx: centre.x, cy: centre.y, s: 1, blur: 0 };
+	const model = new TemplateModel(ref.frame, win);
 	return {
 		region: {
 			name: r.name,
@@ -128,7 +136,8 @@ export function initState(
 			clipped: [],
 			lost: [],
 		},
-		model: new TemplateModel(ref.frame, win),
+		model,
+		inverse: model.inverted(),
 		home,
 		offset: { x: home.x - centre.x, y: home.y - centre.y },
 		area: expand(r, MARGIN, ref.plane),
@@ -143,6 +152,7 @@ export function initState(
 		start: pose,
 		lock,
 		noise: measureNoise(ref.near, win, plan.floor),
+		backdrop: backdropOf(ref.plane, win),
 	};
 }
 

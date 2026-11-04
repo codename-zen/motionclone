@@ -42,10 +42,18 @@ export class TemplateModel {
 	readonly win: Rect;
 	private readonly ref: Frame;
 	private readonly cache = new Map<string, Source>();
+	/** -1 renders the appearance with light and dark swapped: the same element on an inverted backdrop. */
+	private readonly sign: 1 | -1;
 
-	constructor(ref: Frame, win: Rect) {
+	constructor(ref: Frame, win: Rect, sign: 1 | -1 = 1) {
 		this.ref = ref;
 		this.win = win;
+		this.sign = sign;
+	}
+
+	/** The same appearance with light and dark swapped. */
+	inverted(): TemplateModel {
+		return new TemplateModel(this.ref, this.win, -this.sign as 1 | -1);
 	}
 
 	/** Window size at a level and scale, in that level's pixels. */
@@ -113,7 +121,7 @@ export class TemplateModel {
 				const bottom =
 					(sp.data[o + sp.width] as number) * (1 - fx) +
 					(sp.data[o + sp.width + 1] as number) * fx;
-				t[j * w + i] = top * (1 - fy) + bottom * fy;
+				t[j * w + i] = this.sign * (top * (1 - fy) + bottom * fy);
 			}
 		}
 		return gridOf(t, w, h);

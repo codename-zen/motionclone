@@ -47,6 +47,11 @@ It lists the time windows where the screen moves, so you can pick `--start` and 
   `card[0]` and `card[1]` are measured as a group, like sibling elements on a page.
 - Without `--region`, motionclone looks for moving shapes by itself and names them `blob[0]`, `blob[1]` and so on.
   A panel that slides past the edge of the screen is followed by the part that stays in view, and what it reveals or covers gets its own region.
+- A region often locks onto content that rides on a panel, such as a strip of dates on a sheet.
+  When the panel's own edge moves apart from that content (it trails it, or arrives first), the edge is followed too, as `sheet::edge`, and gets rows of its own.
+  `capture` prints a warning for each such edge, and `verify` measures your page's edge from its frames, next to the element you map to the region.
+- On a recording that switches between a light and a dark theme, text is followed against whatever is behind it, so white text on the dark page counts as visible.
+  Its fades there are measured between the two switches, and `verify` measures your page between the same times.
 - `--css-scale 2` turns a recording of a 2x screen into CSS pixels.
   The crop is trimmed at the right and bottom to a whole number of CSS pixels, and a warning shows the new crop.
 - Pick `--start` after any other content in the same spot has gone, so the region only shows the element you want.
@@ -74,7 +79,7 @@ motionclone side-by-side ref mine-a mine-b --out compare.mp4 --from 0 --to 2000 
 - The first directory is the reference, the others are rebuilds, left to right.
 - It works with page captures and video captures.
   Frames of different sizes are scaled to the same height and padded.
-- Times line up on t=0 of each capture.
+- Times line up on t=0 of each capture, and each picture shows every input at the frame recorded nearest that time, using the times in its `track.json`.
   `--offset "0,120"` moves a capture's clock, in ms, one value per input.
 - `--from` and `--to` pick the range in ms, `--fps` the frame rate, `--width` the largest picture width (default 1280).
 - `--crop x,y,w,h` cuts every input the same way, or repeat it once per input.
@@ -161,12 +166,12 @@ Each change gets its own row: `frame[0].progress`, `frame[0].progress#2` and so 
 
 `--reduced-clone <dir>` compares your version with a recording of it made with `--reduced-motion`.
 The report has a **Reduced motion** section: pass, fail with the properties that still move, or why it could not run.
+A change that completes between two frames counts as a state change, not as movement.
 It does not fail the result.
 
 ## Default tolerances
 
 | Check                          | Tolerance             |
-A change that completes between two frames counts as a state change, not as movement.
 | ------------------------------ | --------------------- |
 | Start, end, duration           | ±80 ms                |
 | Gap between siblings (stagger) | ±40 ms                |
@@ -186,6 +191,7 @@ A change that completes between two frames counts as a state change, not as move
 - From video, motionclone measures position, uniform scale, blur and opacity.
   Rotation is not measured.
   Colour changes are measured as progress rows: fades and switches of a region or of the background.
+- A panel edge is found only where it stands out from what is around it: a white sheet on a white page shows no edge, so its rest position there is taken from the nearest frame that shows it, or left out.
 - When an element is invisible at the start of its motion, its start value and exact easing are a best guess; only the visible part is checked.
 - Rows with weak evidence (few clear frames, a loose fit) are advisory and never fail.
 - From a video, an opacity row that the pixels contradict drops to medium or low confidence; its notes give both numbers.

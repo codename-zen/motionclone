@@ -6,6 +6,7 @@ import { pyramid } from "./match.ts";
 import { mergeEnds, rebase } from "./merge.ts";
 import { type Done, frameSource, runPass } from "./pass.ts";
 import { type Plans, planRegion } from "./plan.ts";
+import { scaleInverted } from "./polarity.ts";
 import type { RegionSample, RegionTrack } from "./samples.ts";
 import type { Scan } from "./scan.ts";
 import type { Lock } from "./search.ts";
@@ -170,6 +171,7 @@ export async function trackRegions(
 			floor,
 			bounded,
 		);
+		scaleInverted(smp);
 		fillSamples(
 			smp,
 			shapedOf(smp),

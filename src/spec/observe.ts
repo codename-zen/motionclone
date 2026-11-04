@@ -68,13 +68,14 @@ const groupOf = (p: Property) =>
 /**
  * The tracker says it did not see this property on this frame, so the value is filled in.
  * Positions stay values: the tracker holds an entering element at its extrapolated start (ADR 0002, 0003).
- * An opacity of 0 stays a bound: not finding the element is what an invisible element looks like.
+ * An opacity of 0 stays a bound: not finding the element is what an invisible element looks like. Where light and
+ * dark swapped behind it, other structure in its place is more likely the element in mid-fade: no reading.
  */
 function unobserved(e: TrackedElement, p: Property): boolean {
 	const group = groupOf(p);
 	if (group === null || (e as VideoSample).observed?.[group] !== false)
 		return false;
-	return !(group === "opacity" && e.opacity === 0);
+	return !(group === "opacity" && e.opacity === 0 && !e.flipped);
 }
 
 function videoReading(

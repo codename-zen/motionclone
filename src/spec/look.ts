@@ -16,7 +16,9 @@ import type {
 	PageStyles,
 	PixelLook,
 	StyleEntry,
+	TypeLine,
 } from "../look/schema.ts";
+import { inBox, ranked, sizeGroups } from "../look/type.ts";
 import {
 	BACKGROUND_DELTA_E,
 	DEFAULT_LOOK_TOLERANCES,
@@ -40,6 +42,7 @@ const rowsOf = (method: LookRow["method"], drafts: Draft[]): LookRow[] =>
 		share: null,
 		notes: [],
 		...d,
+		lines: d.lines ?? [],
 		method,
 		tolerances: { ...DEFAULT_LOOK_TOLERANCES, ...d.tolerances },
 	}));
@@ -158,7 +161,32 @@ function pageRows(styles: PageStyles, screen: Screen): LookRow[] {
 	return rowsOf("style", out);
 }
 
-function videoRows(p: PixelLook): LookRow[] {
+// Cap height is about 0.7 of the font size in common sans and serif faces.
+const CAP_PER_EM = 0.7;
+
+// Each size of the lines in one place (a region, or the screen outside every region), largest first.
+function typeDrafts(
+	lines: readonly TypeLine[],
+	all: readonly TypeLine[],
+	key: string | null,
+	screen: Screen,
+): Draft[] {
+	const head = key ? `${key}.look` : "look";
+	const lead = key ? `${key} ` : "";
+	return sizeGroups(lines).map((g, k) => ({
+		id: `${head}.type#${k + 1}`,
+		label: `${lead}text cap height`,
+		measure: "text-height",
+		target: key ? parseKey(key) : null,
+		px: g.px,
+		lines: g.lines.map((l) => ranked(l, all)),
+		notes: [
+			`${g.lines.length} text line${g.lines.length === 1 ? "" : "s"} of this size, the first with its baseline at y ${Math.round((g.lines[0]?.y ?? 0) * screen.h)} px; cap height ${g.px} px is about ${Math.round(g.px / CAP_PER_EM)} px type in a common face`,
+		],
+	}));
+}
+
+function videoRows(p: PixelLook, screen: Screen): LookRow[] {
 	const out: Draft[] = [
 		{
 			id: "look.background",
@@ -183,17 +211,35 @@ function videoRows(p: PixelLook): LookRow[] {
 			colour: a.hex,
 			share: a.share,
 		});
-	for (const r of p.regions) {
+	const boxes = p.regions.map((r) => fracOf(r.box, screen));
+	const regionOf = (l: TypeLine) => boxes.findIndex((b) => inBox(l, b));
+	out.push(
+		...typeDrafts(
+			p.lines.filter((l) => regionOf(l) < 0),
+			p.lines,
+			null,
+			screen,
+		),
+	);
+	for (const [i, r] of p.regions.entries()) {
 		const target = parseKey(r.key);
-		if (target)
-			out.push({
-				id: `${r.key}.look.background`,
-				label: `${r.key} background`,
-				measure: "region-background",
-				target,
-				colour: r.background,
-				tolerances: BACKGROUND,
-			});
+		if (!target) continue;
+		out.push({
+			id: `${r.key}.look.background`,
+			label: `${r.key} background`,
+			measure: "region-background",
+			target,
+			colour: r.background,
+			tolerances: BACKGROUND,
+		});
+		out.push(
+			...typeDrafts(
+				p.lines.filter((l) => regionOf(l) === i),
+				p.lines,
+				r.key,
+				screen,
+			),
+		);
 	}
 	for (const [k, b] of p.blocks.slice(0, MAX_BLOCK_ROWS).entries())
 		out.push({
@@ -216,7 +262,9 @@ export function draftLook(look: LookFile, clip: ClipRect): LookSpec {
 		frames: look.states
 			.filter((s) => s.rest || s.label === "last")
 			.map((s) => ({ label: s.label, frame: s.frame, t: s.t })),
-		rows: last.page ? pageRows(last.page, screen) : videoRows(last.pixels),
+		rows: last.page
+			? pageRows(last.page, screen)
+			: videoRows(last.pixels, screen),
 	});
 }
 

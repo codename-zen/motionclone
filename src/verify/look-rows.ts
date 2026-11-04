@@ -9,6 +9,7 @@ import {
 	trackedEntry,
 } from "../look/derive.ts";
 import type { PageStyles, PixelLook, StyleEntry } from "../look/schema.ts";
+import { capsAt } from "../look/type.ts";
 import type { LookRow } from "../spec/look-schema.ts";
 import {
 	accentVerdict,
@@ -120,6 +121,17 @@ function pixelValue(
 				})),
 				clone.screen,
 			);
+		case "text-height": {
+			const caps = capsAt(r.lines, p.lines, clone.screen.h).sort(
+				(a, b) => a - b,
+			);
+			if (caps.length * 2 < r.lines.length)
+				return missing(
+					r,
+					`the clone has ${caps.length} of the reference's ${r.lines.length} text lines of this size in their places`,
+				);
+			return sizeVerdict(r, caps[caps.length >> 1] as number);
+		}
 		default:
 			return missing(r, `${r.measure} is not measured from pixels`);
 	}

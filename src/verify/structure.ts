@@ -1,10 +1,12 @@
 import type { PNG } from "pngjs";
 import { ssim } from "ssim.js";
+import type { FracBox } from "../look/schema.ts";
 import type { LookFrame } from "../spec/look-schema.ts";
 import { gaussian } from "../video/blur.ts";
 import type { Plane } from "../video/luma.ts";
 import { readPng } from "./pixels.ts";
 import type { StructureFrame, StructureResult } from "./schema.ts";
+import { textScore } from "./text-score.ts";
 
 // Both frames are compared at this width, whatever their pixel sizes.
 const WIDTH = 320;
@@ -64,14 +66,24 @@ export function blurredSsim(
 
 const r4 = (v: number) => Math.round(v * 10_000) / 10_000;
 
-/** The structure score on every reference rest frame; the clone frame with the same index is compared. */
+export interface StructureOptions {
+	blurPx: number;
+	threshold: number;
+	textThreshold: number;
+}
+
+/**
+ * The structure score on every reference rest frame; the clone frame with the same index is compared. Frames with
+ * text bands in the reference's look also get the text score (`textScore`), held to its own threshold.
+ */
 export async function structureScore(
 	refDir: string,
 	cloneDir: string,
 	frames: readonly LookFrame[],
 	cloneFrames: number,
 	cssWidth: number,
-	{ blurPx, threshold }: { blurPx: number; threshold: number },
+	{ blurPx, threshold, textThreshold }: StructureOptions,
+	bands: ReadonlyMap<number, readonly FracBox[]> = new Map(),
 ): Promise<StructureResult> {
 	const out: StructureFrame[] = [];
 	for (const f of frames) {
@@ -80,14 +92,24 @@ export async function structureScore(
 			readPng(cloneDir, Math.min(f.frame, cloneFrames - 1)),
 		]);
 		const score = r4(blurredSsim(a, b, blurPx, cssWidth));
-		out.push({ ...f, ssim: score, pass: score >= threshold });
+		const t = textScore(a, b, bands.get(f.frame) ?? []);
+		const text = t === null ? null : r4(t);
+		out.push({
+			...f,
+			ssim: score,
+			text,
+			pass: score >= threshold && (text === null || text >= textThreshold),
+		});
 	}
 	const minSsim = out.length ? Math.min(...out.map((f) => f.ssim)) : null;
+	const texts = out.flatMap((f) => (f.text === null ? [] : [f.text]));
 	return {
 		blurPx,
 		threshold,
+		textThreshold,
 		frames: out,
 		minSsim,
+		minText: texts.length ? Math.min(...texts) : null,
 		pass: out.every((f) => f.pass),
 	};
 }

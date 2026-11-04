@@ -68,11 +68,28 @@ export const Band = FracBox.extend({
 	px: z.number(),
 });
 
+/** One text line read from pixels: left edge, baseline and width in fractions of the screen, cap height in CSS px. */
+export const TypeLine = z.object({
+	x: z.number(),
+	y: z.number(),
+	w: z.number(),
+	cap: z.number(),
+});
+
+/** One text size read from pixels: cap height in CSS px, lines of that size, share of the text's width. */
+export const TypeSize = z.object({
+	px: z.number(),
+	lines: z.number().int(),
+	share: z.number(),
+});
+
 export const RegionLook = z.object({
 	key: z.string(),
 	box: Box,
 	background: z.string(),
 	palette: z.array(Swatch),
+	/** Text sizes inside the box, largest first; empty in older look files. */
+	type: z.array(TypeSize).default([]),
 });
 
 export const PixelLook = z.object({
@@ -84,6 +101,10 @@ export const PixelLook = z.object({
 	regions: z.array(RegionLook),
 	blocks: z.array(Block),
 	bands: z.array(Band),
+	/** Text sizes of the frame, largest first; empty in older look files. */
+	type: z.array(TypeSize).default([]),
+	/** Every text line the sizes come from; empty in older look files. */
+	lines: z.array(TypeLine).default([]),
 });
 
 export const LookState = z.object({
@@ -130,6 +151,8 @@ export type Swatch = z.output<typeof Swatch>;
 export type Block = z.output<typeof Block>;
 export type Band = z.output<typeof Band>;
 export type RegionLook = z.output<typeof RegionLook>;
+export type TypeSize = z.output<typeof TypeSize>;
+export type TypeLine = z.output<typeof TypeLine>;
 export type PixelLook = z.output<typeof PixelLook>;
 export type LookState = z.output<typeof LookState>;
 export type DesignSummary = z.output<typeof DesignSummary>;

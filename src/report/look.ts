@@ -20,12 +20,20 @@ const rowLine = (r: LookRowVerdict) =>
 export function lookFixes(look: LookResult | null): string[] {
 	if (!look?.enforced) return [];
 	const rows = look.rows.filter((r) => !r.pass).map((r) => r.message);
-	const frames = (look.structure?.frames ?? [])
-		.filter((f) => !f.pass)
-		.map(
-			(f) =>
-				`layout differs on the ${f.label} rest frame (frame ${f.frame}, ${f.t} ms): blurred structure SSIM ${f.ssim.toFixed(3)} < ${look.structure?.threshold}; compare block positions, sizes and text line placement`,
-		);
+	const s = look.structure;
+	const frames = (s?.frames ?? []).flatMap((f) => {
+		const at = `the ${f.label} rest frame (frame ${f.frame}, ${f.t} ms)`;
+		const out: string[] = [];
+		if (f.ssim < (s?.threshold ?? 0))
+			out.push(
+				`layout differs on ${at}: blurred structure SSIM ${f.ssim.toFixed(3)} < ${s?.threshold}; compare block positions, sizes and text line placement`,
+			);
+		if (f.text !== null && f.text < (s?.textThreshold ?? 0))
+			out.push(
+				`text lines differ on ${at}: text score ${f.text.toFixed(3)} < ${s?.textThreshold}; compare type sizes and where each line sits`,
+			);
+		return out;
+	});
 	return [...rows, ...frames];
 }
 
@@ -34,8 +42,10 @@ export function lookLines(look: LookResult | null): string[] {
 	if (!look) return [];
 	if (look.skipped) return [`Skipped: ${look.skipped}`];
 	const s = look.structure;
+	const textOf = (f: NonNullable<typeof s>["frames"][number]) =>
+		f.text === null ? "" : `, text ${f.text.toFixed(3)}`;
 	const structure = s
-		? `Structure (SSIM of grayscale rest frames blurred by ${s.blurPx} px, min ${s.threshold}): ${s.frames.map((f) => `${f.label} frame ${f.frame} ${f.ssim.toFixed(3)}${f.pass ? "" : " !"}`).join(", ")}.`
+		? `Structure (SSIM of grayscale rest frames blurred by ${s.blurPx} px, min ${s.threshold}; text score of the text lines, min ${s.textThreshold ?? "none"}): ${s.frames.map((f) => `${f.label} frame ${f.frame} ${f.ssim.toFixed(3)}${textOf(f)}${f.pass ? "" : " !"}`).join(", ")}.`
 		: "";
 	return [
 		`${look.summary.passed} of ${look.summary.rows} look rows pass, measured from ${look.source === "video" ? "rest-frame pixels" : "computed styles"}${look.enforced ? "" : " (reported only)"}.`,

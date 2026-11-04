@@ -13,6 +13,12 @@ export interface Session {
 	close(): Promise<void>;
 }
 
+/**
+ * Grayscale text antialiasing on every OS: Windows draws subpixel (LCD) text by default, whose coloured fringes
+ * shift measured text colours (near-black read as #1f1940) and differ from captures made elsewhere.
+ */
+export const LAUNCH_ARGS = ["--disable-lcd-text"];
+
 export async function openSession(
 	opts: CaptureOptions,
 	warnings: string[],
@@ -43,7 +49,7 @@ export async function openSession(
 			},
 		};
 	}
-	const browser = await chromium.launch();
+	const browser = await chromium.launch({ args: LAUNCH_ARGS });
 	const context = await browser.newContext({
 		viewport: opts.viewport,
 		deviceScaleFactor: opts.deviceScaleFactor,

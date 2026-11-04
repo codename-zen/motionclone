@@ -17,6 +17,8 @@ export interface LookOptions {
 	blurPx?: number;
 	/** Lowest structure SSIM per rest frame; defaults to the spec's (0.9). */
 	structureThreshold?: number;
+	/** Lowest text score per rest frame; defaults to the spec's (0.9). */
+	textThreshold?: number;
 }
 
 interface LookInputs {
@@ -75,6 +77,14 @@ export async function verifyLook(
 		target: (selector, index) => cloneTarget(x.map, selector, index),
 	};
 	const rows = look.rows.map((r) => checkLookRow(r, clone));
+	// The reference's text bands per rest frame, from its own look.json.
+	const refLook = await readLook(x.refDir);
+	const bands = new Map(
+		(refLook?.states ?? []).map((s) => [
+			s.frame,
+			s.pixels.bands.filter((b) => b.hex !== null),
+		]),
+	);
 	const structure = await structureScore(
 		x.refDir,
 		x.cloneDir,
@@ -87,7 +97,12 @@ export async function verifyLook(
 				opts.structureThreshold ??
 				look.structure.threshold ??
 				DEFAULT_STRUCTURE.threshold,
+			textThreshold:
+				opts.textThreshold ??
+				look.structure.textThreshold ??
+				DEFAULT_STRUCTURE.textThreshold,
 		},
+		bands,
 	);
 	const passed = rows.filter((r) => r.pass).length;
 	const ok = passed === rows.length && structure.pass;

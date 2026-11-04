@@ -8,9 +8,18 @@ import {
 	labelCells,
 	surfaces,
 } from "./blocks.ts";
-import { deltaE2000, type Lab, labToHex, rgbToLab } from "./colour.ts";
+import { type Lab, labToHex } from "./colour.ts";
+import { inkOf, mainInk } from "./ink.ts";
 import { type Grid, gridOf, kmeansPalette, uniformColours } from "./palette.ts";
-import type { Band, Box, PixelLook, RegionLook, Swatch } from "./schema.ts";
+import type {
+	Band,
+	Box,
+	PixelLook,
+	RegionLook,
+	Swatch,
+	TypeLine,
+} from "./schema.ts";
+import { inBox, textLines, typeLines, typeSizes } from "./type.ts";
 
 export interface LookRegion {
 	key: string;
@@ -19,99 +28,23 @@ export interface LookRegion {
 
 const r4 = (v: number) => Math.round(v * 10_000) / 10_000;
 const r1 = (v: number) => Math.round(v * 10) / 10;
-
-// Ink is at least this far from the band's background (Lab units).
-const INK = 20;
-const MAX_PIXELS = 4000;
-const SAME_INK_DE = 6;
-
-/** Lab of the frame pixels in a rectangle, sampled to at most MAX_PIXELS. */
-function pixelsIn(
-	png: PNG,
-	x0: number,
-	y0: number,
-	x1: number,
-	y1: number,
-): Float32Array {
-	const step = Math.max(
-		1,
-		Math.ceil(Math.sqrt(((x1 - x0) * (y1 - y0)) / MAX_PIXELS)),
-	);
-	const out: number[] = [];
-	for (let y = y0; y < y1; y += step)
-		for (let x = x0; x < x1; x += step) {
-			const p = (y * png.width + x) * 4;
-			const c = rgbToLab(
-				png.data[p] as number,
-				png.data[p + 1] as number,
-				png.data[p + 2] as number,
-			);
-			out.push(c.l, c.a, c.b);
-		}
-	return Float32Array.from(out);
-}
-
-/** The ink colour of a text band: the quarter of its pixels farthest from the band's background. */
-function inkOf(
-	png: PNG,
-	r: { x0: number; y0: number; x1: number; y1: number },
-) {
-	const p = pixelsIn(png, r.x0, r.y0, r.x1, r.y1);
-	const bg = uniformColours(p, { max: 1, minShare: 0 })[0]?.lab;
-	if (!bg) return null;
-	const far: { d: number; i: number }[] = [];
-	for (let i = 0; i < p.length / 3; i++) {
-		const d = Math.hypot(
-			(p[i * 3] as number) - bg.l,
-			(p[i * 3 + 1] as number) - bg.a,
-			(p[i * 3 + 2] as number) - bg.b,
-		);
-		if (d > INK) far.push({ d, i });
-	}
-	if (far.length < 8) return null;
-	far.sort((a, b) => b.d - a.d);
-	const top = far.slice(0, Math.max(4, Math.ceil(far.length / 4)));
-	const m = { l: 0, a: 0, b: 0 };
-	for (const { i } of top) {
-		m.l += p[i * 3] as number;
-		m.a += p[i * 3 + 1] as number;
-		m.b += p[i * 3 + 2] as number;
-	}
-	return {
-		lab: { l: m.l / top.length, a: m.a / top.length, b: m.b / top.length },
-		weight: far.length,
-	};
-}
-
-/** The ink colour with the most pixels over all bands, similar inks pooled. */
-function mainInk(inks: { lab: Lab; weight: number }[]): string | null {
-	const groups: { lab: Lab; weight: number }[] = [];
-	for (const ink of [...inks].sort((a, b) => b.weight - a.weight)) {
-		const g = groups.find((x) => deltaE2000(x.lab, ink.lab) < SAME_INK_DE);
-		if (!g) {
-			groups.push({ ...ink, lab: { ...ink.lab } });
-			continue;
-		}
-		const w = g.weight + ink.weight;
-		g.lab = {
-			l: (g.lab.l * g.weight + ink.lab.l * ink.weight) / w,
-			a: (g.lab.a * g.weight + ink.lab.a * ink.weight) / w,
-			b: (g.lab.b * g.weight + ink.lab.b * ink.weight) / w,
-		};
-		g.weight = w;
-	}
-	const best = groups.sort((a, b) => b.weight - a.weight)[0];
-	return best ? labToHex(best.lab) : null;
-}
+const WHITE: Lab = { l: 100, a: 0, b: 0 };
 
 function regionLook(
 	png: PNG,
 	grid: Grid,
 	clip: ClipRect,
 	r: LookRegion,
+	lines: readonly TypeLine[],
 ): RegionLook | null {
 	const f = toFrameRect(r.box, clip, png);
 	if (!f) return null;
+	const frame = {
+		x: f.x0 / png.width,
+		y: f.y0 / png.height,
+		w: (f.x1 - f.x0) / png.width,
+		h: (f.y1 - f.y0) / png.height,
+	};
 	const c = grid.cell;
 	const out: number[] = [];
 	for (
@@ -146,6 +79,7 @@ function regionLook(
 			hex: labToHex(u.lab),
 			share: r4(u.count / n),
 		})),
+		type: typeSizes(lines.filter((l) => inBox(l, frame))),
 	};
 }
 
@@ -175,22 +109,31 @@ export function pixelLook(
 			fill: r4(s.fill),
 		}));
 	const inks: { lab: Lab; weight: number }[] = [];
-	const bands: Band[] = bandsOf(grid, member, Math.ceil(24 / cellCss))
-		.slice(0, 80)
-		.map((b) => {
-			const ink = inkOf(png, {
+	const page = labs[0] ?? WHITE;
+	const cellBands = bandsOf(grid, member, Math.ceil(24 / cellCss)).slice(0, 80);
+	const lines = typeLines(
+		textLines(png, cellBands, grid.cell),
+		png,
+		clip.width / png.width,
+	);
+	const bands: Band[] = cellBands.map((b) => {
+		const ink = inkOf(
+			png,
+			{
 				x0: b.x * grid.cell,
 				y0: b.y * grid.cell,
 				x1: (b.x + b.w) * grid.cell,
 				y1: (b.y + b.h) * grid.cell,
-			});
-			if (ink) inks.push(ink);
-			return {
-				...frac(b),
-				hex: ink ? labToHex(ink.lab) : null,
-				px: r1(b.h * cellCss),
-			};
-		});
+			},
+			page,
+		);
+		if (ink) inks.push(ink);
+		return {
+			...frac(b),
+			hex: ink ? labToHex(ink.lab) : null,
+			px: r1(b.h * cellCss),
+		};
+	});
 	const total = grid.cols * grid.rows;
 	const byColour = new Map<number, number>();
 	for (const s of list)
@@ -203,8 +146,12 @@ export function pixelLook(
 		text: mainInk(inks),
 		palette: kmeansPalette(grid.lab, labs),
 		surfaces: surfaceSwatches,
-		regions: regions.flatMap((r) => regionLook(png, grid, clip, r) ?? []),
+		regions: regions.flatMap(
+			(r) => regionLook(png, grid, clip, r, lines) ?? [],
+		),
 		blocks,
 		bands,
+		type: typeSizes(lines),
+		lines,
 	};
 }

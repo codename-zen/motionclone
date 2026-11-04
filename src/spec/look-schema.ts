@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { FracBox } from "../look/schema.ts";
+import { FracBox, TypeLine } from "../look/schema.ts";
 
 export const DEFAULT_LOOK_TOLERANCES = {
 	/** CIEDE2000 between the reference colour and the clone's. */
@@ -18,6 +18,8 @@ export const DEFAULT_STRUCTURE = {
 	blurPx: 8,
 	/** Lowest SSIM of the blurred grayscale rest frames. */
 	threshold: 0.9,
+	/** Lowest text score: row profiles of the reference's text bands, compared with the clone's. */
+	textThreshold: 0.9,
 } as const;
 
 export const LookTolerances = z.object({
@@ -38,6 +40,7 @@ export const LOOK_MEASURES = [
 	"element-box",
 	"region-background",
 	"block",
+	"text-height",
 ] as const;
 
 export const LookRow = z.object({
@@ -59,6 +62,15 @@ export const LookRow = z.object({
 	box: FracBox.nullable().default(null),
 	/** Share of the screen the colour covers in the reference. */
 	share: z.number().nullable().default(null),
+	/** For text heights: the reference's lines of this size, each with its place in its column of lines. */
+	lines: z
+		.array(
+			TypeLine.extend({
+				rank: z.number().int().nonnegative(),
+				count: z.number().int().nonnegative(),
+			}),
+		)
+		.default([]),
 	tolerances: LookTolerances.prefault({}),
 	notes: z.array(z.string()).default([]),
 });
@@ -77,6 +89,11 @@ export const LookSpec = z.object({
 		.object({
 			blurPx: z.number().nonnegative().default(DEFAULT_STRUCTURE.blurPx),
 			threshold: z.number().min(0).max(1).default(DEFAULT_STRUCTURE.threshold),
+			textThreshold: z
+				.number()
+				.min(0)
+				.max(1)
+				.default(DEFAULT_STRUCTURE.textThreshold),
 		})
 		.prefault({}),
 	rows: z.array(LookRow),

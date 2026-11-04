@@ -52,18 +52,41 @@ export interface ProgressSource {
 }
 
 const box = (r: Rect) =>
-	`x ${Math.round(r.x)}, y ${Math.round(r.y)}, ${Math.round(r.w)}x${Math.round(r.h)}`;
+	`x ${Math.round(r.x)}, y ${Math.round(r.y)}, ${Math.round(r.w)}x${Math.round(r.h)}${r.exclude?.length ? ` without the boxes of ${r.exclude.length} moving element${r.exclude.length === 1 ? "" : "s"}` : ""}`;
 
 export const progressId = (selector: string, index: number, ordinal: number) =>
 	`${elementKey(selector, index)}.${PROGRESS}${ordinal > 1 ? `#${ordinal}` : ""}`;
 
-/** A spec row for one change of an element's appearance, with confidence from its fit and sample count. */
-export function progressRow(
-	src: ProgressSource,
-	noise: number,
-	frameMs: number,
-): SpecRow | null {
-	const w = src.window;
+/** A change done within this many frames is a switch: no frame shows its shape. */
+export const SWITCH_FRAMES = 2;
+
+/** A switch row: the step a page takes in one go, as CSS `steps(1, end)` over the frames it falls between. */
+export const SWITCH: Easing = { type: "steps", count: 1, position: "end" };
+
+export const isSwitch = (row: Pick<SpecRow, "easing" | "property">) =>
+	row.property === PROGRESS &&
+	row.easing.type === "steps" &&
+	row.easing.count === 1;
+
+export const isSwitchWindow = (w: ProgressWindow) =>
+	w.toFrame - w.fromFrame <= SWITCH_FRAMES;
+
+// The rest frames on both sides pin a switch exactly: there is no curve to fit.
+function switchTiming(w: ProgressWindow) {
+	const rest = w.series.filter(([t]) => t <= w.fromMs || t >= w.toMs).length;
+	return {
+		startMs: w.fromMs,
+		durationMs: w.toMs - w.fromMs,
+		easing: SWITCH,
+		rmse: 0,
+		residual: 0,
+		overshoot: 0,
+		confidence: rest >= 6 ? ("high" as const) : ("medium" as const),
+		support: { samples: rest, rmse: 0, observed: 1, quality: null, weak: [] },
+	};
+}
+
+function fittedTiming(w: ProgressWindow, noise: number) {
 	const timing = progressTiming(w.series);
 	if (!timing) return null;
 	const { support, confidence } = supportOf({
@@ -74,12 +97,25 @@ export function progressRow(
 		observed: 1,
 		noise,
 	});
-	const timingTol = r1(frameMs + START_SLACK_MS);
 	const residual = curveDeviation(
 		timing.fit.samples,
 		timing.fit.hint,
 		timing.easing,
 	).max;
+	return { ...timing, residual, support, confidence };
+}
+
+/** A spec row for one change of an element's appearance, with confidence from its fit and sample count. */
+export function progressRow(
+	src: ProgressSource,
+	noise: number,
+	frameMs: number,
+): SpecRow | null {
+	const w = src.window;
+	const timing = isSwitchWindow(w) ? switchTiming(w) : fittedTiming(w, noise);
+	if (!timing) return null;
+	const { support, confidence, residual } = timing;
+	const timingTol = r1(frameMs + START_SLACK_MS);
 	return {
 		id: progressId(src.selector, src.index, src.ordinal),
 		selector: src.selector,
@@ -93,6 +129,7 @@ export function progressRow(
 		easing: timing.easing,
 		overshoot: r4(timing.overshoot),
 		relativeDistance: null,
+		distanceObserved: "full",
 		source: "measured",
 		confidence,
 		support,
@@ -107,7 +144,7 @@ export function progressRow(
 			durationMs: timingTol,
 		},
 		notes: [
-			`appearance progress from pixels in ${box(src.region)} (CSS px), between rest frames ${w.fromFrame} (${Math.round(w.fromMs)} ms) and ${w.toFrame} (${Math.round(w.toMs)} ms); mean RGB change ${w.distance.toFixed(1)}`,
+			`appearance progress from pixels in ${box(src.region)} (CSS px), between rest frames ${w.fromFrame} (${Math.round(w.fromMs)} ms) and ${w.toFrame} (${Math.round(w.toMs)} ms); mean RGB change ${w.distance.toFixed(1)}${isSwitchWindow(w) ? "; a near-instant switch" : ""}`,
 		],
 	};
 }

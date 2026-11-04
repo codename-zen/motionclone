@@ -3,6 +3,8 @@ import type { Track } from "../measure/elements.ts";
 import type { Series } from "../measure/series.ts";
 import {
 	elementRegion,
+	FRAME,
+	frameRegion,
 	measureProgress,
 	type ProgressWindow,
 	type Rect,
@@ -43,7 +45,7 @@ function explainedShare(
 	const spans = rows
 		.filter((r) => {
 			const region = regions.get(elementKey(r.selector, r.index));
-			return region !== undefined && overlaps(region, c.region);
+			return region !== undefined && covers(c.region, region);
 		})
 		.map((r) => [r.startMs - frameMs, r.startMs + r.durationMs + frameMs]);
 	const frames = c.window.series.filter(
@@ -55,6 +57,12 @@ function explainedShare(
 	return frames.length ? covered.length / frames.length : 1;
 }
 
+// Whether a region shows inside another, outside the parts the outer one leaves out.
+const shownIn = (outer: Rect, inner: Rect) =>
+	!outer.exclude?.some((e) => contains(e, inner));
+const covers = (outer: Rect, inner: Rect) =>
+	overlaps(outer, inner) && shownIn(outer, inner);
+
 // A change seen in an element and in a smaller element inside it, at the same time, belongs to the smaller one.
 const nested = (c: Candidate, all: readonly Candidate[]) =>
 	all.some(
@@ -62,6 +70,7 @@ const nested = (c: Candidate, all: readonly Candidate[]) =>
 			o !== c &&
 			o.region.w * o.region.h < c.region.w * c.region.h &&
 			contains(c.region, o.region) &&
+			shownIn(c.region, o.region) &&
 			o.window.fromMs < c.window.toMs &&
 			c.window.fromMs < o.window.toMs,
 	);
@@ -74,6 +83,7 @@ export interface DraftedProgress {
 /**
  * Progress rows for appearance changes the tracked rows do not measure (ADR 0005).
  * From a video every fade-like change of a region gets one; from a page only those no row over the element explains.
+ * The frame, without the boxes of moving elements, is a region too: a background that flips behind a sliding sheet.
  */
 export async function draftProgressRows(input: {
 	dir: string;
@@ -88,6 +98,8 @@ export async function draftProgressRows(input: {
 		const region = elementRegion(track, e.selector, e.index);
 		return region ? [{ ...e, region }] : [];
 	});
+	const frame = frameRegion(track, input.clip);
+	if (frame) elements.push({ selector: FRAME, index: 0, region: frame });
 	if (elements.length === 0) return [];
 	const measured = await measureProgress(
 		input.dir,

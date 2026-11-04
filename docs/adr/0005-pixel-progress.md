@@ -56,6 +56,23 @@ Errors in start, duration and shape that each stay inside their own tolerance ad
 A video opacity row is the tracker's reading of pixels; when the mapped clone element's CSS opacity does not change, its appearance in that element's box is measured with this method instead, and the verdict row says so.
 So a clone that dims a header with an overlay passes the header's opacity row from the video.
 
+## Decision: switches and the background
+
+A looping phone recording flips the whole screen from light to dark in about one frame while a white sheet slides down, and back.
+The rebuild faded through grey over 260 ms, and verify only gave coverage warnings: no row described the flip.
+A change done within two frames is a switch: no frame shows its shape, so it is not fitted.
+Its row runs from the last rest frame before it to the first one after it (one frame), with `steps(1, end)` easing, and high confidence when at least six rest frames bracket it.
+Verify reads a clone's switch the same way and any other change with a free fit.
+A switch row skips the easing and curve checks, because its duration already tells a switch from a fade.
+A clone that fades fails with "frame[0] progress takes 239 ms, want 18 ms (a near-instant switch)".
+
+The frame is a region too: `frame[0]`, the captured area without the boxes of tracked elements that move.
+A background change behind moving content is not a mix of its two rest frames.
+So in the frame each change is read from the pixels that switch together: pixels near the most common colour of the changed pixels at both rests, which cross half way on the most common frame.
+Their own changes become `frame[0].progress`, `frame[0].progress#2` and so on, one per change, with the usual blend and distance limits, when they cover at least 5 % of the region.
+Verify places the reference's frame region on the clone's captured area and measures the clone there, page or video.
+A change the frame shares with a smaller region inside it, outside the left-out boxes, belongs to that region.
+
 ## Measurements
 
 On expand-dim-reveal (57 fps, 816x1080):
@@ -74,6 +91,11 @@ On the same clock it is 0.09 off the spec curve at 719 ms, and fails.
 A clone whose cross-fade starts 120 ms late fails with "card[0] progress starts 120 ms late (want 1500, got 1621)".
 A clone of the same page passes every row, the header's opacity row included, measured from the clone's pixels.
 
+On `fixtures/_variants/sheet-flip` (600x1032, 56 fps, flips at 400 and 1700 ms while the sheet slides 440 px over 300 ms), recorded as h264 crf 18 with a region around the sheet:
+- the tracker followed a 280 px wide part of the sheet, so the frame region still held the rest of the slide: the whole frame read 393 to 643 ms with a blend residual of 0.50;
+- the pixels that switch together read 393 to 411 ms, blend 0.000, for both flips, on the video and on the page;
+- a page clone of the same page passes; one that fades over 260 ms measures 239 and 238 ms and fails both rows.
+
 ## Alternatives
 
 - The least-squares projection of each frame onto the line from start to end is not biased by encoder noise; the distance ratio was kept because it is the method the recording was measured with, and its fits stay within 0.002 rms here.
@@ -83,6 +105,7 @@ A clone of the same page passes every row, the header's opacity row included, me
 ## Limits
 
 - Two fades that overlap in time inside one region are not a single mix and get no row.
+- A frame region needs at least 2 % of the screen outside the boxes of moving elements; a background change seen only behind them gets no row.
 - Changes that move or scale content get no progress row; the tracker rows cover those.
 - An outer element loses a change that a smaller element inside it shows at the same time, even when the outer one also changes elsewhere.
 - Drafting reads every frame once: about 1 to 2 seconds more per spec on these captures.
@@ -92,3 +115,4 @@ A clone of the same page passes every row, the header's opacity row included, me
 - `SpecRow.property` accepts `progress`; older spec files still parse.
 - The verdict of a progress row has a `curve` metric.
 - `CloneMotion` keeps only the series and window of the clone's motion, so motions read from pixels fit in it.
+- Progress rows of the `frame` pseudo element need no tracked element in the clone, and a `steps(1, end)` progress row is a switch.

@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>sheet-flip</title>
+<script>
+  // #fade, #small and #words are rebuilds of the plain page: a 260 ms background fade, text 25 % smaller, other words.
+  document.documentElement.className = location.hash.slice(1);
+</script>
+<style>
+  html { margin: 0; overflow: hidden; --k: 1; }
+  html.small { --k: 0.75; }
+  body { margin: 0; width: 600px; height: 1032px; overflow: hidden; position: relative; font-family: system-ui, sans-serif; background: #fff;
+    animation: dark 1ms steps(1, start) 400ms forwards, light 1ms steps(1, start) 1700ms forwards; }
+  html.fade body { animation: dark 260ms linear 400ms forwards, light 260ms linear 1700ms forwards; }
+  @keyframes dark { from { background-color: #fff; } to { background-color: #111114; } }
+  @keyframes light { from { background-color: #111114; } to { background-color: #fff; } }
+
+  .top { position: absolute; left: 32px; top: 30px; color: #8a8a90; font-size: calc(22px * var(--k)); font-weight: 600; }
+  .top span { display: block; font-size: calc(15px * var(--k)); font-weight: 500; margin-top: 4px; }
+  .summary { position: absolute; left: 32px; top: 140px; width: 536px; color: #f2f2f5; }
+  .summary b { display: block; font-size: calc(64px * var(--k)); font-weight: 700; }
+  .summary i { display: block; font-style: normal; font-size: calc(20px * var(--k)); color: #9c9ca6; margin-top: 4px; }
+
+  .sheet { position: absolute; left: 0; top: 96px; width: 600px; height: 1400px; border-radius: 28px 28px 0 0; background: #fff; color: #1d1d22;
+    animation: down 300ms cubic-bezier(0.33, 1, 0.68, 1) 400ms forwards, up 300ms cubic-bezier(0.33, 1, 0.68, 1) 1700ms forwards;
+    animation-composition: add; }
+  @keyframes down { from { translate: 0 0; } to { translate: 0 440px; } }
+  @keyframes up { from { translate: 0 0; } to { translate: 0 -440px; } }
+  .grip { position: absolute; left: 280px; top: 10px; width: 40px; height: 5px; border-radius: 3px; background: #c9c9cf; }
+  .task { position: absolute; left: 24px; width: 552px; height: 64px; border-bottom: 1px solid #ececf0; }
+  .task .tick { position: absolute; left: 4px; top: 18px; width: 24px; height: 24px; border-radius: 50%; border: 3px solid #c4c4cc; box-sizing: border-box; }
+  .task p { position: absolute; left: 48px; top: 10px; margin: 0; font-size: calc(19px * var(--k)); }
+  .task small { position: absolute; left: 48px; top: 36px; font-size: calc(14px * var(--k)); color: #8a8a90; }
+</style>
+</head>
+<body>
+  <div class="top">Planner<span>Week 46</span></div>
+  <div class="summary"><b>6 of 9</b><i>tasks done this week</i></div>
+  <div class="sheet">
+    <div class="grip"></div>
+    <div class="task" style="top: 30px"><div class="tick"></div><p>Water the plants</p><small>08:00 at home</small></div>
+    <div class="task" style="top: 94px"><div class="tick"></div><p>Send the draft</p><small>09:30 at work</small></div>
+    <div class="task" style="top: 158px"><div class="tick"></div><p>Call the bakery</p><small>11:00 errand</small></div>
+    <div class="task" style="top: 222px"><div class="tick"></div><p>Review pull request</p><small>13:15 at work</small></div>
+    <div class="task" style="top: 286px"><div class="tick"></div><p>Book train tickets</p><small>18:30 errand</small></div>
+    <div class="task" style="top: 350px"><div class="tick"></div><p>Read two chapters</p><small>21:00 at home</small></div>
+    <div class="task" style="top: 414px"><div class="tick"></div><p>Plan the weekend</p><small>21:30 at home</small></div>
+  </div>
+  <script>
+    if (document.documentElement.classList.contains("words")) {
+      const words = ["Fix the bike", "Buy fresh bread", "Write to Anna", "Clean the kitchen", "Pay the rent bill", "Walk the dog", "Order new shoes"];
+      document.querySelectorAll(".task p").forEach((p, i) => { p.textContent = words[i]; });
+    }
+  </script>
+</body>
+</html>

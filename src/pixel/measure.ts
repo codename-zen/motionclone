@@ -1,11 +1,12 @@
 import type { ClipRect } from "../capture/options.ts";
 import type { Track } from "../measure/elements.ts";
+import { backgroundWindows } from "./background.ts";
 import { readRegions } from "./frames.ts";
 import { type ProgressWindow, progressWindows } from "./progress.ts";
 import type { Rect } from "./region.ts";
 
 export type { ProgressWindow } from "./progress.ts";
-export { elementRegion, type Rect } from "./region.ts";
+export { elementRegion, FRAME, frameRegion, type Rect } from "./region.ts";
 
 export interface RegionProgress {
 	region: Rect;
@@ -28,7 +29,11 @@ export async function measureProgress(
 		const r = read[i];
 		return {
 			region,
-			windows: r?.rect ? progressWindows(r.frames, t, track.frameMs) : [],
+			windows: !r?.rect
+				? []
+				: region.exclude
+					? backgroundWindows(r.frames, t, track.frameMs)
+					: progressWindows(r.frames, t, track.frameMs),
 		};
 	});
 }

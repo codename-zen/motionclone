@@ -124,6 +124,19 @@ When the clone moves it several times, the row is paired with the clone motion t
 On the phone recording the clone's sheet slid four times against one row at 599 ms; it now reads 604 ms over 289 ms against 605 over 293, where it read a start of -546404056958217 ms.
 Between motions, a piece that jumps from its rest to its far value in one frame and eases back starts at the jump: the element was placed off its end, then animated in.
 
+## Decision: motion blur is not a fade
+
+A phone recording drafted `sheet[0].opacity` 0.92 to 1 at 838 ms and `sheet[0].opacity#2` 0.9 to 1 at 4946 ms, medium, from a sheet that never fades.
+The tracker read opacity only from frame 47, when the strip was within 9 px of rest; the rise was motion blur and compression clearing as the slide ended.
+A DOM clone measured from its own pixels showed no such dip and failed both rows (want 838 ms over 50 ms, got 635 ms over 252 ms).
+A video opacity row is now dropped when all of these hold:
+- it rises by less than 0.15;
+- it starts while a position row of the same element runs, or within two frames of its end;
+- on every frame where it reads more than 0.02 under its end value, the element's box moves at least 0.5 CSS px a frame.
+  `dropped` names the slide and the number of dimmed frames.
+  On the recording both rows are dropped, and verify of the same clone reads motion 8/8 (8/10 before).
+  A synthetic card that slides 400 px with a shutter open for 0.15 of each frame, h264 crf 23, read 0.88 and 0.87 to 1; both are dropped and both slides are kept.
+  A fade of the same size on a box that stands still, a rise of 0.3, or a fade without a slide stay rows.
 
 ## Decision: confidence and advisory rows
 

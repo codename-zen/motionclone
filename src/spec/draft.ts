@@ -8,6 +8,7 @@ import {
 	type Track,
 } from "../measure/elements.ts";
 import { VERSION } from "../version.ts";
+import { dropBlurArtefacts } from "./blur-artefact.ts";
 import {
 	type CaptureFile,
 	readAnimations,
@@ -213,12 +214,15 @@ export async function draftSpec(
 	const motions = motionProperties(track);
 	const bounds = trackBounds(track, cap.frameMs);
 	const dropped: DroppedRow[] = [];
-	const rows = keepPlausible(
+	const model = observationModel(cap);
+	const plausibleRows = keepPlausible(
 		draftRows(motions, track, animations, cap, bounds),
 		bounds,
 		dropped,
 	);
-	const model = observationModel(cap);
+	const rows = model
+		? dropBlurArtefacts(plausibleRows, track, cap.frameMs, dropped)
+		: plausibleRows;
 	const progress = await draftProgressRows({
 		dir,
 		track,

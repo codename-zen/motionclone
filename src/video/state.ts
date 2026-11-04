@@ -6,6 +6,7 @@ import { measureNoise, type Status } from "./quality.ts";
 import type { NamedRect } from "./regions.ts";
 import type { RegionSample, RegionTrack } from "./samples.ts";
 import type { Lock, Pose } from "./search.ts";
+import { type Structure, structureOf } from "./structure.ts";
 
 // Context ring around the element so a flat-coloured element still has edges to match.
 export const MARGIN = 6;
@@ -53,6 +54,8 @@ export interface State {
 	/** Where a lost element is searched again: the region plus the context ring. */
 	area: Rect;
 	colour: ColourModel | null;
+	/** Blocks of a rigid element, matched where the template fails. */
+	structure: Structure | null;
 	/** Box centre minus the colour box centre at the reference end. */
 	colourOffset: { x: number; y: number };
 	/** Quarter-resolution frame where the last wide search failed. */
@@ -123,12 +126,14 @@ export function initState(
 			refFrame: ref.k,
 			samples,
 			clipped: [],
+			lost: [],
 		},
 		model: new TemplateModel(ref.frame, win),
 		home,
 		offset: { x: home.x - centre.x, y: home.y - centre.y },
 		area: expand(r, MARGIN, ref.plane),
 		colour,
+		structure: plan.bounded ? structureOf(ref.frame, box) : null,
 		colourOffset: { x: home.x - cb.x - cb.w / 2, y: home.y - cb.y - cb.h / 2 },
 		missed: null,
 		pose,

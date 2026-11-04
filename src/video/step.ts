@@ -13,6 +13,7 @@ import {
 	search,
 } from "./search.ts";
 import { isFound, type State, shiftOf, still } from "./state.ts";
+import { matchStructure } from "./structure.ts";
 
 // The template and colour readings agree within these: scale in log units, centre in pixels or a share of the box.
 const SCALE_AGREE = 0.03;
@@ -116,6 +117,25 @@ export function step(s: State, f: Frame, rgba: Rgba, k: number) {
 		quality = Math.min(1, reading.fill / (s.colour?.fill ?? 1));
 		opacity = 1;
 		m = { ...cp, ncc: 0, contrast: 1, spread: 0 };
+	} else if (s.structure) {
+		const p = shiftOf(s, predict(s));
+		const r = matchStructure(s.structure, f, s.area, { x: p.dx, y: p.dy });
+		if (r) {
+			method = "structure";
+			status = "found";
+			quality = r.quality;
+			opacity = 1;
+			const { s: sc, blur } = s.pose;
+			m = {
+				cx: s.home.x + r.dx - sc * s.offset.x,
+				cy: s.home.y + r.dy - sc * s.offset.y,
+				s: sc,
+				blur,
+				ncc: 0,
+				contrast: 1,
+				spread: 0,
+			};
+		}
 	}
 	const found = isFound(status);
 	Object.assign(s.region.samples[k] as RegionSample, {

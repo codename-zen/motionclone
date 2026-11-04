@@ -104,6 +104,8 @@ function element(
 	const scale = Math.round(s.scale * 10000) / 10000;
 	const b = sampleBox(t.box, { ...s, scale });
 	const blur = s.blur < MIN_BLUR ? 0 : r1(s.blur * css);
+	// Colour and block readings place the element; they do not measure its blur or opacity.
+	const placedOnly = s.method === "colour" || s.method === "structure";
 	return {
 		index: parseRegionName(t.name).index,
 		x: r1(b.x * css),
@@ -120,9 +122,9 @@ function element(
 		quality: Math.round(s.quality * 100) / 100,
 		observed: {
 			position: s.found && !s.clipped,
-			scale: s.status === "found",
-			blur: s.status === "found" && s.method !== "colour",
-			opacity: s.status !== "other" && s.method !== "colour",
+			scale: s.status === "found" && s.method !== "structure",
+			blur: s.status === "found" && !placedOnly,
+			opacity: s.status !== "other" && !placedOnly,
 		},
 		clipped: s.clipped,
 	};
@@ -181,6 +183,11 @@ export async function captureVideo(
 		warnings.push(
 			`region ${c.region}: the element reaches past the region edge while it moves on frames ${c.fromFrame}-${c.toFrame} (${c.fromMs}-${c.toMs} ms); positions there are not observed and its travel may be truncated: widen the region to cover the whole move`,
 		);
+	for (const t of tracks)
+		for (const l of t.lost)
+			warnings.push(
+				`region ${t.name}: the element was lost on frames ${l.from}-${l.to} (${frameTimeMs(l.from, ex.fps)}-${frameTimeMs(l.to, ex.fps)} ms) while the region changed; positions there are filled, not measured, so a move in that window may be missing: declare a region on distinctive content that rides on the element`,
+			);
 	const css = cssPerFramePx(ex);
 	const bySelector = new Map<string, RegionTrack[]>();
 	for (const t of tracks) {

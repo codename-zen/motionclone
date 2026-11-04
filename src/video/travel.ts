@@ -1,21 +1,7 @@
+import { BLOCK, blocksAt, MIN_VOTES, refine, tiles, vote } from "./block.ts";
 import type { Plane } from "./luma.ts";
-import {
-	COARSE,
-	type Frame,
-	type Grid,
-	gridOf,
-	type Rect,
-	score,
-	TINY,
-} from "./match.ts";
+import { COARSE, type Frame, type Rect, score, TINY } from "./match.ts";
 
-// Blocks are this many pixels square on their level: 64 frame pixels for the vote, 32 to classify.
-const BLOCK = 8;
-// A block needs this luma standard deviation to say anything about where it went.
-const MIN_STD = 4;
-// A block votes for its best displacement when it matches there this well.
-const VOTE_NCC = 0.9;
-const MIN_VOTES = 2;
 // A block moved when it matches this well at the travel and better than where it was.
 const MOVED_NCC = 0.8;
 const MOVED_MARGIN = 0.05;
@@ -34,96 +20,6 @@ export interface Travel {
 	box: Rect;
 	/** No moving content stays inside the region at both states; the box is what is inside at a. */
 	leaves: boolean;
-}
-
-function blockAt(p: Plane, x: number, y: number, n: number): Grid | null {
-	if (x < 0 || y < 0 || x + n > p.width || y + n > p.height) return null;
-	const t = new Float32Array(n * n);
-	for (let j = 0; j < n; j++)
-		for (let i = 0; i < n; i++)
-			t[j * n + i] = p.data[(y + j) * p.width + x + i] as number;
-	const g = gridOf(t, n, n);
-	return Math.sqrt(g.sumSq / (n * n)) >= MIN_STD ? g : null;
-}
-
-/** Block origins tiling the rect on a level of factor f, `step` level pixels apart. */
-function tiles(r: Rect, f: number, step = BLOCK): { x: number; y: number }[] {
-	const out: { x: number; y: number }[] = [];
-	const x0 = Math.ceil(r.x / f);
-	const y0 = Math.ceil(r.y / f);
-	for (let y = y0; (y + BLOCK) * f <= r.y + r.h; y += step)
-		for (let x = x0; (x + BLOCK) * f <= r.x + r.w; x += step)
-			out.push({ x, y });
-	return out;
-}
-
-/** The most voted displacement of the rect's blocks on the eighth-resolution level, static votes excluded. */
-function vote(a: Plane, b: Plane, r: Rect): { x: number; y: number } | null {
-	const votes = new Map<string, number>();
-	// Half-block steps, so content near the frame edge still has a block that fits at both states.
-	for (const t of tiles(r, TINY, BLOCK / 2)) {
-		const g = blockAt(a, t.x, t.y, BLOCK);
-		if (!g) continue;
-		let top = { ncc: VOTE_NCC, x: 0, y: 0, hit: false };
-		for (let y = 0; y + BLOCK <= b.height; y++)
-			for (let x = 0; x + BLOCK <= b.width; x++) {
-				const s = score(b, g, x, y);
-				if (s && s.ncc > top.ncc) top = { ncc: s.ncc, x, y, hit: true };
-			}
-		if (!top.hit) continue;
-		const key = `${top.x - t.x},${top.y - t.y}`;
-		votes.set(key, (votes.get(key) ?? 0) + 1);
-	}
-	let best: { x: number; y: number; n: number } | null = null;
-	for (const key of votes.keys()) {
-		const [x, y] = key.split(",").map(Number) as [number, number];
-		if (Math.abs(x) <= 1 && Math.abs(y) <= 1) continue;
-		let n = 0;
-		for (let j = -1; j <= 1; j++)
-			for (let i = -1; i <= 1; i++) n += votes.get(`${x + i},${y + j}`) ?? 0;
-		if (n >= MIN_VOTES && (!best || n > best.n)) best = { x, y, n };
-	}
-	return best;
-}
-
-interface Block {
-	x: number;
-	y: number;
-	g: Grid;
-}
-
-/** Blocks of `n` pixels with structure at the given origins of a plane. */
-const blocksAt = (p: Plane, at: { x: number; y: number }[], n: number) =>
-	at.flatMap((t): Block[] => {
-		const g = blockAt(p, t.x, t.y, n);
-		return g ? [{ ...t, g }] : [];
-	});
-
-/**
- * The displacement within `radius` of `d` where the blocks' summed correlation peaks. Only blocks that stay in
- * the frame over the whole window count, so the frame edge cannot pull the peak towards keeping more inside.
- */
-function refine(
-	b: Plane,
-	all: Block[],
-	d: { x: number; y: number },
-	radius: number,
-): { x: number; y: number } {
-	const fits = (k: Block) =>
-		k.x + d.x - radius >= 0 &&
-		k.y + d.y - radius >= 0 &&
-		k.x + d.x + radius + k.g.w <= b.width &&
-		k.y + d.y + radius + k.g.h <= b.height;
-	const blocks = all.some(fits) ? all.filter(fits) : all;
-	let top = { ...d, s: Number.NEGATIVE_INFINITY };
-	for (let j = -radius; j <= radius; j++)
-		for (let i = -radius; i <= radius; i++) {
-			let s = 0;
-			for (const k of blocks)
-				s += score(b, k.g, k.x + d.x + i, k.y + d.y + j)?.ncc ?? -1;
-			if (s > top.s) top = { x: d.x + i, y: d.y + j, s };
-		}
-	return { x: top.x, y: top.y };
 }
 
 const inside = (b: Rect, r: Rect, m: number) =>
@@ -267,7 +163,9 @@ export function findTravel(
 			? overlapOf(bbox(moved), limit)
 			: null;
 	const leaves = kept.length === 0 && cut === null;
-	const blocks = cut ?? bbox(leaves ? moved : kept);
+	// Kept blocks stay inside at state b; their box is held inside at state a too.
+	const inner = kept.length > 0 ? overlapOf(bbox(kept), limit) : null;
+	const blocks = cut ?? inner ?? bbox(leaves ? moved : kept);
 	const box = fitBox(a.full, b.full, blocks, d, leaves ? r : limit, floor);
 	// Content that does not look the same at both states once fitted is not one rigid element.
 	if (box.w * box.h < RIGID * blocks.w * blocks.h) return null;

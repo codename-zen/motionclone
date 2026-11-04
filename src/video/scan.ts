@@ -93,6 +93,19 @@ export const sameState = (
 	floor: number,
 ) => changedShare(s, a, b, r, floor) <= STATE_SHARE;
 
+/** Whether anything in the rect moves between frames `from` and `to`. */
+export function movesBetween(
+	s: Scan,
+	from: number,
+	to: number,
+	r: Rect,
+	floor: number,
+): boolean {
+	for (let k = Math.max(1, from + 1); k <= Math.min(to, s.frames - 1); k++)
+		if (changedShare(s, k - 1, k, r, floor) > STILL_SHARE) return true;
+	return false;
+}
+
 /** Runs of at least PLATEAU_FRAMES frames where nothing in the rect moves. */
 export function restPlateaus(s: Scan, r: Rect, floor: number): Plateau[] {
 	const out: Plateau[] = [];

@@ -2,7 +2,7 @@ import type { Rect } from "./match.ts";
 import { type RegionSample, type RegionTrack, sampleBox } from "./samples.ts";
 
 // A box edge within this many pixels of the region edge touches it.
-const TOUCH = 1;
+export const TOUCH = 1;
 // The box centre moves more than this many pixels from the neighbouring frame: the element is still moving.
 const MOVING = 0.5;
 
@@ -10,7 +10,7 @@ const MOVING = 0.5;
  * How far the box reaches past the region on its worst side; negative while it stays inside. Sides where the
  * region ends at the frame edge do not count: there the frame cuts the content, not the region.
  */
-function overreach(b: Rect, r: Rect, frame: Rect): number {
+export function overreach(b: Rect, r: Rect, frame: Rect): number {
 	const none = Number.NEGATIVE_INFINITY;
 	return Math.max(
 		r.x > frame.x ? r.x - b.x : none,

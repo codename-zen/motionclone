@@ -2,8 +2,14 @@ import type { Plane } from "./luma.ts";
 import type { Rect } from "./match.ts";
 import type { Status } from "./quality.ts";
 
-/** Which reading placed the element: the template, its colour box, or both (agreeing or not); none when neither. */
-export type Method = "template" | "colour" | "both-agree" | "disagree" | "none";
+/** Which reading placed the element: the template, its colour box, both (agreeing or not), its blocks; none when nothing did. */
+export type Method =
+	| "template"
+	| "colour"
+	| "both-agree"
+	| "disagree"
+	| "structure"
+	| "none";
 
 export interface RegionSample {
 	/** The position is measured: status found or faint. */
@@ -40,6 +46,8 @@ export interface RegionTrack {
 	samples: RegionSample[];
 	/** Frame ranges where the box reached past the region edge while moving. */
 	clipped: { from: number; to: number }[];
+	/** Frame ranges where the element was lost while the region changed: a move there is not measured. */
+	lost: { from: number; to: number }[];
 }
 
 /** The reference box moved and scaled about its centre as a sample says. */

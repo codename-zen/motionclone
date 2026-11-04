@@ -1,5 +1,6 @@
 import { markClipped } from "./clip.ts";
 import { fillSamples } from "./fill.ts";
+import { markLost } from "./lost.ts";
 import { readFrame, readLuma } from "./luma.ts";
 import { pyramid } from "./match.ts";
 import { mergeEnds, rebase } from "./merge.ts";
@@ -159,8 +160,16 @@ export async function trackRegions(
 			warnings.push(
 				`region ${s.region.name}: the element was never found; its box stays at the region`,
 			);
-		if ((used[i] as RegionPlan).bounded)
-			markClipped(s.region, regions[i] as TrackRegionInput, frame);
+		const { bounded } = used[i] as RegionPlan;
+		if (bounded) markClipped(s.region, regions[i] as TrackRegionInput, frame);
+		markLost(
+			s.region,
+			scan,
+			regions[i] as TrackRegionInput,
+			frame,
+			floor,
+			bounded,
+		);
 		fillSamples(
 			smp,
 			shapedOf(smp),

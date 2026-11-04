@@ -155,6 +155,7 @@ Each sample in `regions.json` carries `method`:
 - `both-agree`: the template and the colour box agree within 0.03 in log scale (scale only on `found` frames) and 3 px or 1.5 % of the box in centre; quality stays;
 - `disagree`: both measured but differ beyond that; the template values are kept and quality is halved;
 - `colour`: only the colour box measured the frame; status is `found`, scale and position are measured, blur is filled from template frames, opacity is written as 1 (a colour match needs a nearly opaque element) but not marked observed, and quality is the fill ratio against the reference;
+- `structure`: only the blocks of a rigid element placed it (see surfaces that blend into the background below);
 - `none`: neither found the element.
 
 On expand-dim-reveal captured at 57 fps, encoded at crf 18, with a region around the card's start and end boxes plus 12 px:
@@ -268,6 +269,40 @@ On sheet-loop at 56 fps (449 frames), encoded at crf 18 and cropped to 600x640:
 
 Uncropped, the same fixture now gives the sheet (box 580x484 instead of 584x487, the corners trimmed, every frame found) plus the same two summary regions.
 
+## Decision: surfaces that blend into the background
+
+A phone recording of the same kind of sheet (56 fps, 8.04 s, cropped to 600x1032, `--css-scale 1.5`) lost three of its four slides with a region over the sheet's travel: 267 of 450 frames were found and only the first slide was drafted, as a low-confidence spring.
+The page flips between white and near-black in one frame during each slide, so the white sheet sits on a white page for part of it.
+The sheet's content also rides up inside the sheet on the way down, so its top edge and its content travel different distances.
+The travel box was the week strip at the lower rest, and its 6 px context ring held a few pixels of the sheet's rounded corner against the dark page.
+On white frames the corner was gone: the template correlated 0.94 even at the upper rest, the fidelity fell under 0.9, and every white frame read `other`.
+The sheet-blend variant of sheet-loop reproduces it: the page flips in one frame halfway through each slide, the sheet starts under the header with 48 px corners, its content rides 28 px up inside it on the way down, and the screen is cropped to 600x600 so that only the week strip shows at the lower rest.
+Before this decision a region over the travel (x 0, y 84, 600x516) found 198 of 449 frames, all of them dark, and drafted one slide (start 516 ms, 185 ms); automatic regions did the same.
+
+Block matching: a region planned from travel also keeps its element as blocks: the 32 px blocks of the box at the reference frame that hold structure (luma deviation 4), each normalised on its own.
+When the template does not find the element on a frame, the blocks are matched instead: within 40 px of the predicted displacement at quarter resolution first, else where 64 px blocks vote at eighth resolution inside the region (a standstill counts here), then refined at full resolution to a sub-pixel peak.
+Blocks that land on flat content (deviation under 4) say nothing, so the sheet's edge on a white page drops out instead of pulling the match down, and normalised blocks match the same content across a page flip.
+The match is accepted when at least 3 blocks correlate 0.8 or more there and they are at least half of the blocks that land on structure.
+The frame is then `found` with method `structure`, its quality is that share, and scale and blur keep their locked values, so `observed.scale`, `observed.blur` and `observed.opacity` are false (opacity is written as 1).
+Only regions planned from travel use it, because their element is rigid and shows at both anchors; elsewhere a lost template still means a lost element.
+
+The travel box is now also held 8 px inside the region at the first anchor, as the travel rule above says; the kept blocks used to be tested only at the second anchor.
+Once the sheet-blend frames were found, a box lying on the region's top edge at the upper rest marked the first frame of every slide as clipped travel.
+
+Lost transitions: a run of at least 3 frames where the element was not found while the region changed gets a warning that names the region, the frames and the times, and `regions.json` keeps the runs as `lost: [{ from, to }]`.
+A region planned from travel reports every such run.
+Other regions report a gap between found frames only when the element came back at least 2 px away and stays inside the region on both sides, because their element may just be covered, not there yet, or gone past the region edge.
+Clipped frames are reported as clipped travel instead.
+
+On sheet-blend at 56 fps (449 frames), encoded at crf 18 and cropped to 600x600:
+- with the region above: every frame found, the box 584x88 over the week strip, slides drafted from 400.0, 2300.1, 4400.0 and 6300.1 ms (key 400, 2300, 4400, 6300) over 300.4, 299.6, 300.4 and 299.6 ms (key 300), 412 px each (the content's travel), and no warning;
+- with automatic regions: the sheet region finds every frame and drafts the same four slides within 0.1 ms, next to the summary and grip regions, with no warning.
+
+On the recording, with the same region: 447 of 450 frames found, slides from 623.8, 2642.4, 4772.6 and 6990.0 ms over 390.7, 178.8, 307.8 and 194.0 ms, 440.5 CSS px each, all high confidence.
+Automatic regions give a sheet region that finds all 450 frames, with slides from 626.6, 2642.4, 4772.6 and 7006.6 ms over 259.5, 178.8, 307.9 and 239.3 ms.
+The recording repeats frames and moves the strip 165 CSS px between two frames early in each slide back up, so durations there are less certain than starts.
+Tracking that region takes about 19 s, as before.
+
 ## Decision: cloning a recording with --like
 
 `--like <videoCaptureDir>` used to take only fps, duration and a load trigger, so a clone of a phone recording was captured at 1280x800 and scale 1, and every look check failed (background ΔE 92.6, SSIM 0.25) until the viewport was set by hand; the density could not be matched at all.
@@ -302,6 +337,7 @@ A crop that does not divide by the css scale gives frames up to one pixel off.
 - Rest plateaus are used only when a region ends in the state it starts in; a clip that moves through three states keeps its two ends as anchors and finds the middle state by continuity.
 - A region planned from travel is a rigid move: an element that also scales or blurs between its rest states, or only in the middle of the move, is not measured as scaling or blurring.
 - Travel needs blocks with structure that look alike at both anchors; a flat panel with no content does not vote and is planned from the changed content.
+- Block matching only places a rigid element: it measures no scale, blur or opacity, and an element whose content changes while it moves is reported as lost, not followed.
 - A found reading whose scale jumps by more than 0.2 (log units) per frame is refused, so an element that really grows that fast, or that reappears after a gap at a very different size, is not followed; the other anchor's track can still fill it.
 - An element is unobservable while fully transparent; the extrapolation above covers entrances that move and fade together, not ones that move a long way before appearing.
 - Compression noise sets the floor: on h264 crf 18 the position jitters by about 0.1 px and the opacity proxy by about 0.03; heavier compression needs a higher `noiseFloor`.

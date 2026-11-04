@@ -351,6 +351,10 @@ On sheet-stretch (the page dark from 400 to 2100 ms, the header fading in linear
 - `header[0].progress` runs from the first dark frame, 412.1 ms, over 193.1 ms, linear, and `header[0].progress#2` from 1699.2 ms over 90.1 ms, linear; the opacity rows that the dot distorts drop to low;
 - a clone that shows and hides the header at once fails both progress rows and nothing else.
 
+With Linux fonts the header's glyphs change the region by half as much (9.3 mean levels against 18.6), and the fade out ends 4 ms after a frame, so that frame moves it 0.4 levels, under the rest limit.
+It is kept in the change by the 2 % step rule of ADR 0005: `header[0].progress#2` runs from 1698.8 ms over 92 ms, linear, where it read as a 174 ms spring before.
+The dot does not distort the opacity rows there: they read 409 ms over 192.7 ms and 1702.8 ms over 86.8 ms, linear and high, and the instant clone fails them with the progress rows.
+
 On the Joi recording the header now reads 0.2, 0.21, 0.36, 0.51, 0.63, 0.75 and 0.89 on its first dark frames, which a brightest-pixel reading of the same frames (51 to 254 levels) agrees with.
 
 ## Decision: cloning a recording with --like

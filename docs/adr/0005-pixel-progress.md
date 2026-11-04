@@ -22,6 +22,8 @@ Large regions are sampled on a grid of at most 40000 pixels per frame.
 The activity curve is the same mean difference between consecutive frames.
 A frame is at rest when it changes by at most 0.5 levels, or three times the quietest quarter of the capture when the encoder is noisier.
 A change runs between the last rest frame before it and the first rest frame after it; rest gaps up to 50 ms (at least two frames) inside it are slow moments, not its end.
+A quiet frame on either side that still moves the region at least 2 % of the way from start to end (the least-squares projection of its step onto the change) belongs to the change.
+A short fade that ends just after a frame moves only a few % on the next one, often under the rest limit: taken as rest, the frame before it became the end, the true rest read a few % off it, and the fit took that for a spring settle.
 Each change also gets a blend residual: the largest share of the change, on any frame inside it, that a mix of its two rest frames leaves unexplained.
 
 ## Decision: progress rows

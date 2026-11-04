@@ -23,6 +23,7 @@ const PAGE = {
 const MAP = ["sheet=.sheet", "header=.hdr"];
 const EDGE_ROWS = ["sheet::edge[0].y", "sheet::edge[0].y#2"];
 const FADE_ROWS = ["header[0].progress", "header[0].progress#2"];
+const OPACITY_ROWS = ["header[0].opacity", "header[0].opacity#2"];
 
 // The panel slides 440 px: down from 400 ms over 380 ms easeInOutCubic, up from 1700 ms over 240 ms; its content
 // slides the same 440 px over 300 ms easeOutCubic both ways. The page is dark from 400 to 2100 ms, where the header
@@ -110,11 +111,9 @@ describe("video of a sheet whose surface moves apart from its content, under a h
 			Math.abs((fadeIn?.startMs ?? 0) + (fadeIn?.durationMs ?? 0) - 600),
 		).toBeLessThan(FRAME_MS);
 		expect(Math.abs((fadeOut?.startMs ?? 0) - 1700)).toBeLessThan(FRAME_MS);
-		// The frame after a short fade can read a few % off the rest after it, which the fit may take for a settle.
-		expect(fadeOut?.durationMs).toBeGreaterThan(90 - FRAME_MS);
-		expect(fadeOut?.durationMs).toBeLessThan(200);
-		expect(fadeIn?.easing).toEqual({ type: "linear" });
+		expect(Math.abs((fadeOut?.durationMs ?? 0) - 90)).toBeLessThan(FRAME_MS);
 		for (const r of [fadeIn, fadeOut]) {
+			expect(r?.easing).toEqual({ type: "linear" });
 			expect(r?.within).toBeDefined();
 		}
 	});
@@ -134,10 +133,21 @@ describe("video of a sheet whose surface moves apart from its content, under a h
 		expect(failing("rigid")).toEqual(EDGE_ROWS);
 	});
 
-	it("fails a clone that shows and hides the header at once, on the fade rows only", () => {
-		const bad = failing("instant");
-		expect(bad).toEqual(expect.arrayContaining(FADE_ROWS));
-		// Where the font draws the header without distortion, its opacity rows stay checked and fail too.
-		expect(bad.every((id) => id.startsWith("header[0]."))).toBe(true);
+	it("fails a clone that shows and hides the header at once, on the header's fade rows only", () => {
+		// The tracker's opacity rows count where the font lets it read the fades as the progress rows do; where the dot
+		// distorts them, the cross-check leaves them advisory.
+		const rows = (verdicts.instant as Verdict).rows;
+		const checked = OPACITY_ROWS.filter(
+			(id) => rows.find((r) => r.id === id)?.advisory === null,
+		);
+		for (const id of OPACITY_ROWS) {
+			if (checked.includes(id))
+				expect(rowOf(spec, id).easing).toEqual({ type: "linear" });
+			else
+				expect(rows.find((r) => r.id === id)?.advisory).toMatch(
+					/^pixel progress disagrees/,
+				);
+		}
+		expect(failing("instant")).toEqual([...FADE_ROWS, ...checked].sort());
 	});
 });

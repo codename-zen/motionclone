@@ -85,3 +85,49 @@ export function plausibleBezier(
 		hi <= 1 + seen.over + margin
 	);
 }
+
+/** The clip a fit must lie in: times of its first and last frame. */
+export interface TimeBounds {
+	firstMs: number;
+	lastMs: number;
+	frameMs: number;
+}
+
+const msText = (v: number) => `${Math.round(v * 10) / 10} ms`;
+
+/**
+ * Why a fitted timing cannot be the clip's motion, or null: the start lies within one frame before the first frame
+ * and the last frame, the end within one frame after the last frame, and the duration is positive and no longer
+ * than the clip plus a frame.
+ */
+export function timingProblem(
+	startMs: number,
+	durationMs: number,
+	b: TimeBounds,
+): string | null {
+	const end = startMs + durationMs;
+	const length = b.lastMs - b.firstMs;
+	const clip = `the clip runs ${msText(b.firstMs)} to ${msText(b.lastMs)}`;
+	if (!Number.isFinite(startMs) || !Number.isFinite(durationMs))
+		return "the fit has no finite timing";
+	if (durationMs <= 0) return `duration ${msText(durationMs)} is not positive`;
+	if (durationMs > length + b.frameMs)
+		return `duration ${msText(durationMs)} is longer than the clip (${msText(length)})`;
+	if (startMs < b.firstMs - b.frameMs || startMs > b.lastMs)
+		return `start ${msText(startMs)} is outside the clip; ${clip}`;
+	if (end > b.lastMs + b.frameMs)
+		return `end ${msText(end)} is after the clip; ${clip}`;
+	return null;
+}
+
+/** Bounds of a series: its first and last sample, with its median frame gap. */
+export function seriesBounds(
+	series: readonly (readonly [number, number])[],
+	frameMs: number,
+): TimeBounds {
+	return {
+		firstMs: series[0]?.[0] ?? 0,
+		lastMs: series.at(-1)?.[0] ?? 0,
+		frameMs,
+	};
+}

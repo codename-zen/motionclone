@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { TrackFrame } from "../capture/types.ts";
+import { splitAtRests } from "./segments.ts";
 import {
 	extractSeries,
 	PROPERTIES,
@@ -22,10 +23,12 @@ export interface MovingProperty {
 	property: Property;
 	window: MotionWindow;
 	series: Series;
+	/** 1 for the first of several motions of this property separated by rests, 2 for the next; absent when it moves once. */
+	ordinal?: number;
 }
 
 // Smallest total range that counts as movement, per property unit.
-const MIN_RANGE: Record<Property, number> = {
+export const MIN_RANGE: Record<Property, number> = {
 	opacity: 0.01,
 	translateX: 0.5,
 	translateY: 0.5,
@@ -53,8 +56,14 @@ export async function readTrack(dir: string): Promise<Track> {
 	return JSON.parse(await readFile(join(dir, "track.json"), "utf8")) as Track;
 }
 
-/** Every tracked (selector, index) and property that moves, with its window. */
-export function movingProperties(track: Track): MovingProperty[] {
+/**
+ * Every tracked (selector, index) and property that moves, with its window; a property that moves several times,
+ * with rests between, gives one entry per motion unless `split` is false.
+ */
+export function movingProperties(
+	track: Track,
+	{ split = true }: { split?: boolean } = {},
+): MovingProperty[] {
 	const out: MovingProperty[] = [];
 	for (const selector of track.selectors) {
 		const indices = new Set<number>();
@@ -77,11 +86,23 @@ export function movingProperties(track: Track): MovingProperty[] {
 								readProperty(firstBox, axis === "w" ? "scaleX" : "scaleY"),
 							)
 						: 1;
-				const window = motionWindow(series, {
-					size:
-						axis && firstBox && scale > 0 ? firstBox[axis] / scale : undefined,
+				const size =
+					axis && firstBox && scale > 0 ? firstBox[axis] / scale : undefined;
+				const pieces = split
+					? splitAtRests(series, MIN_RANGE[property])
+					: [series];
+				const found = pieces.flatMap((piece) => {
+					const window = motionWindow(piece, { size });
+					return window ? [{ window, series: piece }] : [];
 				});
-				if (window) out.push({ selector, index, property, window, series });
+				for (const [k, f] of found.entries())
+					out.push({
+						selector,
+						index,
+						property,
+						...f,
+						...(found.length > 1 ? { ordinal: k + 1 } : {}),
+					});
 			}
 		}
 	}

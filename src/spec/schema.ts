@@ -78,6 +78,8 @@ export const SpecRow = z.object({
 	overshoot: z.number().nonnegative(),
 	/** Distance divided by the element size along the motion axis; null when the property has no axis. */
 	relativeDistance: z.number().nullable(),
+	/** `lower-bound` when the tracked element was clipped at its region edge during the motion: it moves at least this far. */
+	distanceObserved: z.enum(["full", "lower-bound"]).default("full"),
 	source: z.enum(["declared", "measured"]),
 	/** From `support` (ADR 0003); verify reports "low" rows as advisory, never as failures. */
 	confidence: z.enum(["high", "medium", "low"]),
@@ -113,6 +115,15 @@ export const StillEntry = z.object({
 	notes: z.array(z.string()).default([]),
 });
 
+/** A motion the draft found but did not turn into a row, with the reason. */
+export const DroppedRow = z.object({
+	id: z.string(),
+	selector: z.string(),
+	index: z.number().int().nonnegative(),
+	property: z.string(),
+	reason: z.string(),
+});
+
 export const SpecMeta = z.object({
 	tool: z.string(),
 	referenceDir: z.string(),
@@ -137,6 +148,8 @@ export const SpecFile = z.object({
 	meta: SpecMeta,
 	rows: z.array(SpecRow),
 	still: z.array(StillEntry),
+	/** Motions left out because no plausible row describes them; empty in older spec files. */
+	dropped: z.array(DroppedRow).default([]),
 	/** Design facts of the reference, checked by look and pixel fidelity; null in older spec files. */
 	look: LookSpec.nullable().default(null),
 });
@@ -145,5 +158,6 @@ export type Easing = z.output<typeof Easing>;
 export type Tolerances = z.output<typeof Tolerances>;
 export type SpecRow = z.output<typeof SpecRow>;
 export type StillEntry = z.output<typeof StillEntry>;
+export type DroppedRow = z.output<typeof DroppedRow>;
 export type SpecMeta = z.output<typeof SpecMeta>;
 export type SpecFile = z.output<typeof SpecFile>;

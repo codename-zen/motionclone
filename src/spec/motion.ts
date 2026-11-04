@@ -1,4 +1,5 @@
 import { type Candidate, classifyMotion, normalise } from "../fit/classify.ts";
+import type { TimeBounds } from "../fit/plausible.ts";
 import type { Hint, Sample } from "../fit/types.ts";
 import {
 	type MovingProperty,
@@ -11,6 +12,20 @@ const SCALES: Property[] = ["scale", "scaleX", "scaleY"];
 
 export const elementKey = (selector: string, index: number) =>
 	`${selector}[${index}]`;
+
+/** Row id of a motion: `sheet[0].y`, then `sheet[0].y#2` for its second motion, as progress rows are numbered. */
+export const motionId = (
+	m: Pick<MovingProperty, "selector" | "index" | "property" | "ordinal">,
+) =>
+	`${elementKey(m.selector, m.index)}.${m.property}${(m.ordinal ?? 1) > 1 ? `#${m.ordinal}` : ""}`;
+
+/** Times a split motion's series covers, or undefined for a property that moves once. */
+export const motionRange = (
+	m: Pick<MovingProperty, "series" | "ordinal">,
+): [number, number] | undefined =>
+	m.ordinal === undefined
+		? undefined
+		: [m.series[0]?.[0] ?? 0, m.series.at(-1)?.[0] ?? 0];
 
 const sameChange = (a: MovingProperty, b: MovingProperty) =>
 	Math.abs(a.window.change - b.window.change) <=
@@ -54,7 +69,8 @@ export function motionProperties(track: Track): MovingProperty[] {
 	for (const m of all) {
 		const key = elementKey(m.selector, m.index);
 		const props = byElement.get(key) ?? new Map<Property, MovingProperty>();
-		props.set(m.property, m);
+		// Whether a property is explained by another is decided on its first motion.
+		if (!props.has(m.property)) props.set(m.property, m);
 		byElement.set(key, props);
 	}
 	return all.filter((m) => {
@@ -104,9 +120,10 @@ export interface FittedMotion {
 /** Fit a series over its motion window; any series with a window, a tracked property or a pixel progress curve. */
 export function fitMotion(
 	m: Pick<MovingProperty, "series" | "window">,
+	bounds?: TimeBounds,
 ): FittedMotion {
 	const { samples, hint } = normalise(m.series, m.window);
-	const c = classifyMotion(m.series, m.window);
+	const c = classifyMotion(m.series, m.window, bounds);
 	return { samples, hint, best: c.best, overshoot: c.overshoot };
 }
 

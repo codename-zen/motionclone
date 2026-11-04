@@ -6,6 +6,9 @@ import {
 	MIN_FRAMES,
 	OVERSHOOT_MIN,
 	plausibleBezier,
+	seriesBounds,
+	type TimeBounds,
+	timingProblem,
 } from "./plausible.ts";
 import type { BezierParams } from "./presets.ts";
 import { PRESETS } from "./presets.ts";
@@ -97,11 +100,14 @@ const complexity = (c: Candidate, overshooting: boolean): number => {
 	}
 };
 
+/** Fit every curve kind; the simplest close fit wins among those whose timing lies in `bounds` (default: the series' span). */
 export function classifyMotion(
 	series: Series,
 	window: MotionWindow,
+	bounds?: TimeBounds,
 ): Classification {
 	const { samples, hint } = normalise(series, window);
+	const clip = bounds ?? seriesBounds(series, hint.frameMs);
 	const overshoot = Math.max(0, ...samples.map((s) => s[1] - 1));
 	const seen = excursion(samples);
 	const candidates: Candidate[] = [];
@@ -175,7 +181,12 @@ export function classifyMotion(
 		});
 
 	candidates.sort((a, b) => a.rmse - b.rmse);
-	const sane = candidates.filter((c) => plausible(c, seen, hint.frameMs));
+	const shaped = candidates.filter((c) => plausible(c, seen, hint.frameMs));
+	// A fit that runs off the clip, such as a plateau read as a curve of near-infinite duration, yields to the next.
+	const timed = shaped.filter(
+		(c) => timingProblem(c.delayMs, c.durationMs, clip) === null,
+	);
+	const sane = timed.length > 0 ? timed : shaped;
 	const needsOvershoot = overshoot > OVERSHOOT_MIN;
 	const eligible = needsOvershoot ? sane.filter((c) => c.overshoots) : sane;
 	const pool = eligible.length > 0 ? eligible : sane;

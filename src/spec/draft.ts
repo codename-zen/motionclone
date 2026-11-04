@@ -1,6 +1,7 @@
 import { writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import type { AnimationRecord } from "../capture/types.ts";
+import type { TimeBounds } from "../fit/plausible.ts";
 import {
 	type MovingProperty,
 	readTrack,
@@ -12,6 +13,7 @@ import {
 	readAnimations,
 	readCaptureFile,
 } from "./capture-file.ts";
+import { clippedDistance, clippedRanges } from "./clipped.ts";
 import { supportOf } from "./confidence.ts";
 import { crossCheck } from "./cross-check.ts";
 import { matchDeclared, type Timing } from "./declared.ts";
@@ -21,14 +23,18 @@ import { draftLookOf } from "./look.ts";
 import {
 	elementKey,
 	fitMotion,
+	motionId,
 	motionProperties,
+	motionRange,
 	trackedElements,
 } from "./motion.ts";
 import { type Observed, observationModel, observe } from "./observe.ts";
 import { fitPartialRows, type PartialFit } from "./partial.ts";
+import { keepPlausible, trackBounds } from "./plausible-rows.ts";
 import { draftProgressRows } from "./progress.ts";
 import {
 	DEFAULT_TOLERANCES,
+	type DroppedRow,
 	SPEC_VERSION,
 	SpecFile,
 	type SpecRow,
@@ -43,8 +49,9 @@ function draftRow(
 	animations: AnimationRecord[],
 	cap: CaptureFile,
 	noise: number,
+	bounds: TimeBounds,
 ): SpecRow {
-	const fit = fitMotion(m);
+	const fit = fitMotion(m, bounds);
 	const notes: string[] = [];
 	const declared = matchDeclared(m, fit, animations, cap.frameMs, notes);
 	const easing = declared?.easing ?? candidateEasing(fit.best);
@@ -75,7 +82,7 @@ function draftRow(
 		noise,
 	});
 	return {
-		id: `${elementKey(m.selector, m.index)}.${m.property}`,
+		id: motionId(m),
 		selector: m.selector,
 		index: m.index,
 		property: m.property,
@@ -87,6 +94,7 @@ function draftRow(
 		easing,
 		overshoot: r4(m.window.overshoot),
 		relativeDistance: m.window.relative === null ? null : r4(m.window.relative),
+		distanceObserved: "full",
 		source: declared ? "declared" : "measured",
 		confidence: declared ? "high" : confidence,
 		support,
@@ -114,7 +122,7 @@ function partialRow(
 		weak: fit.weak,
 	});
 	return {
-		id: `${elementKey(m.selector, m.index)}.${m.property}`,
+		id: motionId(m),
 		selector: m.selector,
 		index: m.index,
 		property: m.property,
@@ -126,6 +134,7 @@ function partialRow(
 		easing: fit.easing,
 		overshoot: r4(m.window.overshoot),
 		relativeDistance: null,
+		distanceObserved: "full",
 		source: "measured",
 		confidence,
 		support,
@@ -143,11 +152,19 @@ function draftRows(
 	track: Track,
 	animations: AnimationRecord[],
 	cap: CaptureFile,
+	bounds: TimeBounds,
 ): SpecRow[] {
 	const model = observationModel(cap);
 	const items = motions.map((m) => ({
 		m,
-		observed: observe(track, m.selector, m.index, m.property, model),
+		observed: observe(
+			track,
+			m.selector,
+			m.index,
+			m.property,
+			model,
+			motionRange(m),
+		),
 	}));
 	const partial = fitPartialRows(
 		items.filter((i) => !i.observed.fromObserved),
@@ -155,11 +172,13 @@ function draftRows(
 		model,
 	);
 	const noise = model?.noise ?? 0;
+	const clipped = clippedRanges(cap);
 	return items.map(({ m, observed }) => {
 		const fit = partial.get(m);
-		return fit
+		const row = fit
 			? partialRow(m, observed, fit, noise)
-			: draftRow(m, observed, animations, cap, noise);
+			: draftRow(m, observed, animations, cap, noise, bounds);
+		return clippedDistance(row, track, clipped);
 	});
 }
 
@@ -191,7 +210,13 @@ export async function draftSpec(
 		readAnimations(dir),
 	]);
 	const motions = motionProperties(track);
-	const rows = draftRows(motions, track, animations, cap);
+	const bounds = trackBounds(track, cap.frameMs);
+	const dropped: DroppedRow[] = [];
+	const rows = keepPlausible(
+		draftRows(motions, track, animations, cap, bounds),
+		bounds,
+		dropped,
+	);
 	const model = observationModel(cap);
 	const progress = await draftProgressRows({
 		dir,
@@ -201,8 +226,16 @@ export async function draftSpec(
 		video: model !== null,
 		noise: model?.noise ?? 0,
 	});
-	crossCheck(rows, progress, cap.frameMs);
-	rows.push(...progress.map((p) => p.row));
+	const plausible = new Set(
+		keepPlausible(
+			progress.map((p) => p.row),
+			bounds,
+			dropped,
+		),
+	);
+	const kept = progress.filter((p) => plausible.has(p.row));
+	crossCheck(rows, kept, cap.frameMs);
+	rows.push(...kept.map((p) => p.row));
 	linkStagger(rows);
 	const moving = new Set(motions.map((m) => elementKey(m.selector, m.index)));
 	const o = cap.options;
@@ -234,6 +267,7 @@ export async function draftSpec(
 					"does not move in the reference: the rebuild must keep it still",
 				],
 			})),
+		dropped,
 		look: await draftLookOf(dir, cap.clip),
 	});
 	if (write) await writeFile(join(dir, "spec.json"), json(spec));

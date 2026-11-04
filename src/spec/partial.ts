@@ -7,6 +7,7 @@ import {
 import type { Hint } from "../fit/types.ts";
 import type { MovingProperty } from "../measure/elements.ts";
 import { bezierEasing } from "./easing.ts";
+import { motionId } from "./motion.ts";
 import { type ObservationModel, type Observed, valueRange } from "./observe.ts";
 import type { Easing } from "./schema.ts";
 
@@ -44,8 +45,10 @@ interface Context {
 	capped: Map<PartialItem, number>;
 }
 
-const label = (m: MovingProperty) => `${m.selector}[${m.index}].${m.property}`;
-const elementOf = (m: MovingProperty) => `${m.selector}[${m.index}]`;
+const label = (m: MovingProperty) => motionId(m);
+// Motions of one element share timing; a later motion (ordinal 2 and on) is its own group.
+const elementOf = (m: MovingProperty) =>
+	`${m.selector}[${m.index}]${(m.ordinal ?? 1) > 1 ? `#${m.ordinal}` : ""}`;
 const round = (v: number) => Number(v.toFixed(3));
 
 /** Tracks whose frames before the motion carry bounds (an opacity that reads 0) set the timing; the rest follow. */

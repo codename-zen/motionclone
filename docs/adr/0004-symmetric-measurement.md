@@ -19,6 +19,9 @@ Otherwise, as for script-driven clones, the clone's start and duration come from
 The free fit only names the clone's easing in messages.
 Step easings keep the free fit's timing, because their plateaus defeat the timing optimiser and the free fit already searches them on a grid.
 With `--map`, the clone's animations are renamed along with its track.
+The clipped frames come from `clipped: true` on the element in `track.json` or from `video.clippedTravel` in `capture.json` (ADR 0002).
+When a video tracker flags its element as clipped at the region edge during a row's motion, the reference shows only part of the travel.
+That row's `distanceObserved` is `lower-bound`: a clone that moves further passes the distance check, a clone that moves less than the bound minus the tolerance fails, and the verdict row carries a note.
 
 ## Consequences
 

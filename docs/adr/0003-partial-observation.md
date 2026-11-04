@@ -69,6 +69,28 @@ Spec drafting now only keeps fits a page could produce:
 - control points keep x in 0..1 and y in 0..1, or -1..2 when the readings go past an end value by more than 2 % (plus the reading noise for video), which covers every back and overshoot curve in use;
 - named curves and springs that overshoot more than the readings show, curves that gain more than 0.4 of their progress within 2 % of their time (a step, not an easing) and curves shorter than two frames are not candidates; linear and steps always are.
 
+## Decision: plausible timing
+
+A looping phone recording drafted `week[0].opacity` from -2012022744001.1 ms over 4903811838658 ms, with no warning.
+A plateau at mid progress fits best as a curve so long that it is flat over the clip, so the optimiser runs to infinity.
+A fitted row must now lie in the clip: its start within one frame before the first frame and the last frame, its end at most one frame after the last frame, and its duration above 0 and at most the clip plus a frame.
+A candidate outside these bounds yields to the next one; when none is left, or a joint fit of a partly observed row is outside, the row is not drafted.
+Declared rows keep the page's own timing.
+A row whose `from` and `to` differ by less than the property's movement floor (opacity 0.01, 0.5 px, scale 0.005, 0.5 deg, blur 0.1 px) is not drafted either: a move away and back, or a frame the tracker lost, is not a motion the row can describe.
+`spec.json` lists each left-out motion under `dropped` with its reason.
+
+## Decision: several motions of one property
+
+A looping clip moves one element's property several times, such as a sheet that slides down, up, down and up.
+A series is cut into motions at rests: at least 3 frames and 250 ms within 3 % of the series' range (at least the movement floor).
+Each motion runs from where the rest before it holds its value to where the rest after it ends, and must cover a quarter of the series' range; smaller swings are reading wobble.
+A series with one motion stays whole, so a hold shorter than 250 ms stays inside its motion.
+Each motion is its own row: `sheet[0].y`, `sheet[0].y#2`, `sheet[0].y#3`, numbered like progress rows, with its own timing, easing, distance and declared animation.
+A pulse with a rest at its peak becomes two rows, out and back; without one it still ends where it starts and is dropped.
+Verify pairs row #n with the clone's n-th motion of that property in time.
+A clone with fewer motions fails the missing rows with "sheet[0] y has 3 motions, want 4", and one with more fails the last row the same way.
+A property with a single row is compared against the clone's whole series, as before.
+
 ## Decision: confidence and advisory rows
 
 Confidence was the fit rms alone, so rows built from misread frames still decided the verdict.
@@ -84,6 +106,7 @@ It is now the lowest of four levels, recorded with its numbers in the row's `sup
 The noise is 0 for page captures, so page rows keep the old rms thresholds, and 0.03 for video.
 Declared rows of a page capture are high, and a row whose start value was held to the visible range is low.
 Verify still compares a low row, but reports it under "Advisory (low confidence)" with its numbers and the reasons the evidence is weak; it never fails the verdict, and the summary reads, for example, "PASS (6 rows checked, 2 advisory)".
+A verdict with no motion or look row checked is not a pass: its status is `no-checks`, it reads "NO CHECKS", and the CLI exits with 3.
 Medium and high rows are checked as before.
 On every existing fixture and video test no row is low, so every wrong variant still fails where it did.
 
@@ -129,6 +152,7 @@ A DOM clone of the page passes; a clone without blur and scale fails those rows,
 
 ## Consequences
 
+- `SpecFile` has `dropped` (default empty) and `Verdict` has `status` (absent in older verdicts, which then read it from `pass`).
 - `SpecRow` has `fromObserved` (default true) and `support` (default null); `RowVerdict` has `notes` (default empty) and `advisory` (default null); the verdict summary has `advisory` (default 0); older spec and verdict files still parse, and an older spec's low rows are advisory with a reason that says no evidence was recorded.
 - On the fade-up stagger video (ADR 0002), the opacity rows are partly observed, because opacity reads 0 before each card appears; with the tracker's `observed` fields the y rows are partly observed too, share the opacity timing and land on `easeOutExpo` within 5 ms of the declared starts and 16 ms of the 700 ms duration on Linux and Windows, and every existing video check still passes.
 - A relative distance is measured against the element's unscaled size, so a rebuild that leaves out a scale no longer fails the translate row of the same element.

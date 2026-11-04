@@ -131,18 +131,22 @@ function boundLeadingFills(obs: Observation[]): void {
 	}
 }
 
-/** Readings of one property as values or bounds, with frames that hold no reading left out. */
+/** Readings of one property as values or bounds, with frames that hold no reading left out; `range` limits them to one motion. */
 export function observe(
 	track: Track,
 	selector: string,
 	index: number,
 	property: Property,
 	model: ObservationModel,
+	range?: [number, number],
 ): Observed {
 	const obs: Observation[] = [];
-	const firstT = track.frames[0]?.t ?? 0;
+	const frames = range
+		? track.frames.filter((f) => f.t >= range[0] && f.t <= range[1])
+		: track.frames;
+	const firstT = frames[0]?.t ?? 0;
 	let presentAtStart = false;
-	for (const f of track.frames) {
+	for (const f of frames) {
 		const e = f.elements[selector]?.find((x) => x.index === index);
 		if (!e) continue;
 		if (f.t === firstT) presentAtStart = true;

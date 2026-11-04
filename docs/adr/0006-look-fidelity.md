@@ -29,6 +29,10 @@ The palette is k-means in Lab seeded with the fills plus the farthest leftovers,
 Connected cells of one fill covering at least 0.3 % of the frame are surfaces; those that are not the background, fill at least half of their bounding box and are at least 8 CSS px on each side are blocks.
 Cells on no surface are ink: their row projection gives text-line bands, split where 24 CSS px of columns have none.
 A band's ink colour is the mean of the quarter of its pixels farthest from the band's own background; the main text colour is the ink with the most pixels, similar inks pooled.
+The band's background is its most common flat colour, unless its second most common colour shows more in a thin ring just outside the band: large bold glyphs can cover more of their line than the gaps between them.
+On the Joi recording the light-state "Fri" (cap height 34.6 CSS px, bold) took its own near-black as the background, so the ink was its antialiased edge and read `#949194` in a tight region and `#7c797c` in a wide one.
+It reads `#100e11` in both now, and the dark state still reads white.
+Ink is weighed by the frame pixels it covers, not by its samples, because large bands are sampled sparsely: before, the wide region's grey date lines outweighed the larger black "Fri".
 Pixels of the page background colour are not ink either: in a band across a button's edge they are the page around it, and with grayscale text they outweighed the dark text on `look-card-bg`.
 Subpixel (LCD) text has fringes of opposite hues that cancel out on average.
 When the mean hue of a band's ink is under half its mean chroma, ink pixels with a chroma above 20 are fringes and are left out.

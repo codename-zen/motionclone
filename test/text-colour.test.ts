@@ -7,6 +7,7 @@ import { captureMotion } from "../src/capture/index.ts";
 import { deltaE2000, parseHex, rgbToLab } from "../src/look/colour.ts";
 import { readLook } from "../src/look/file.ts";
 import { pixelLook } from "../src/look/pixels.ts";
+import { readTrack } from "../src/measure/elements.ts";
 
 const INK = "#111111";
 const PAGE = `<!doctype html><html><body style="margin:0;background:#fff;color:${INK};font:16px/1.4 'Segoe UI', Arial, sans-serif">
@@ -99,5 +100,48 @@ describe("text colour from pixels", () => {
 		const text = pixelLook(png, { x: 0, y: 0, ...VIEWPORT }).text;
 		expect(text).toBeTruthy();
 		expect(deltaE(text as string)).toBeLessThan(3);
+	});
+});
+
+// Bold capitals this large cover more of their line than the gaps between them do (about 56 %).
+const bold = (bg: string, ink: string, text: string) =>
+	`<!doctype html><html><body style="margin:0;background:${bg}"><div class="t" style="position:absolute;left:24px;top:24px;color:${ink};font:700 48px/1 Arial, sans-serif">${text}</div><p style="position:absolute;left:24px;top:220px;margin:0;color:${ink};font:16px Arial, sans-serif">${"plain words ".repeat(20)}</p></body></html>`;
+
+describe("text colour of large bold glyphs in a tight region", () => {
+	const read = async (name: string, bg: string, ink: string, text = "HEM") => {
+		const file = join(root, `${name}.html`);
+		await writeFile(file, bold(bg, ink, text));
+		const out = join(root, name);
+		await captureMotion({
+			url: file,
+			outDir: out,
+			viewport: VIEWPORT,
+			durationMs: 100,
+			fps: 30,
+			deviceScaleFactor: 1.5,
+			track: [".t"],
+		});
+		const box = (await readTrack(out)).frames[0]?.elements[".t"]?.[0];
+		const png = PNG.sync.read(await readFile(join(out, "frames", "0000.png")));
+		const look = pixelLook(png, { x: 0, y: 0, ...VIEWPORT }, [
+			{ key: ".t[0]", box: box as NonNullable<typeof box> },
+		]);
+		return look.regions[0]?.text as string;
+	};
+	const near = (hex: string, want: string) => deltaE2000(lab(hex), lab(want));
+
+	it("reads the glyph core, on light and on dark", async () => {
+		expect(
+			near(await read("bold-light", "#fffdff", "#0a080a"), "#0a080a"),
+		).toBeLessThan(3);
+		expect(
+			near(await read("bold-dark", "#131114", "#fdfcfd", "Fri"), "#fdfcfd"),
+		).toBeLessThan(3);
+	});
+
+	it("still tells grey glyphs from black ones", async () => {
+		const grey = await read("bold-grey", "#fffdff", "#8a878a");
+		expect(near(grey, "#8a878a")).toBeLessThan(3);
+		expect(near(grey, "#0a080a")).toBeGreaterThan(20);
 	});
 });

@@ -6,6 +6,8 @@ import { uniformColours } from "./palette.ts";
 const INK = 20;
 const MAX_PIXELS = 4000;
 const SAME_INK_DE = 6;
+// Ring pixels this close (Lab units) to a candidate background show that colour around the band.
+const SAME_SURFACE = 10;
 // Subpixel (LCD) antialiasing draws neutral text with fringes of opposite hues that cancel out on average:
 // when the mean hue of the ink is under this share of its mean chroma, pixels above STRONG_CHROMA are fringes.
 const CANCELLED = 0.5;
@@ -58,14 +60,64 @@ function pixelsIn(
 	return Float32Array.from(out);
 }
 
+type Rect = { x0: number; y0: number; x1: number; y1: number };
+
+/** Lab of the pixels in a thin ring just outside a rectangle, clipped to the frame. */
+function ringAround(png: PNG, r: Rect): Float32Array {
+	const g = Math.max(2, Math.round((r.y1 - r.y0) / 6));
+	const x0 = Math.max(0, r.x0 - g);
+	const x1 = Math.min(png.width, r.x1 + g);
+	const strips: Rect[] = [
+		{ x0, x1, y0: Math.max(0, r.y0 - g), y1: Math.max(0, r.y0) },
+		{
+			x0,
+			x1,
+			y0: Math.min(png.height, r.y1),
+			y1: Math.min(png.height, r.y1 + g),
+		},
+		{ x0, x1: Math.max(0, r.x0), y0: r.y0, y1: r.y1 },
+		{ x0: Math.min(png.width, r.x1), x1, y0: r.y0, y1: r.y1 },
+	];
+	const parts = strips
+		.filter((s) => s.x1 > s.x0 && s.y1 > s.y0)
+		.map((s) => pixelsIn(png, s.x0, s.y0, s.x1, s.y1));
+	const out = new Float32Array(parts.reduce((n, q) => n + q.length, 0));
+	let o = 0;
+	for (const q of parts) {
+		out.set(q, o);
+		o += q.length;
+	}
+	return out;
+}
+
+/**
+ * The band's background: its most common flat colour, unless large bold glyphs cover more of the band than the
+ * space between them does; then of its two most common colours the one that also surrounds the band.
+ */
+function backdropOf(png: PNG, r: Rect, p: Float32Array): Lab | undefined {
+	const [first, second] = uniformColours(p, { max: 2, minShare: 0 });
+	if (!first || !second) return first?.lab;
+	const ring = ringAround(png, r);
+	const near = (c: Lab) => {
+		let n = 0;
+		for (let i = 0; i < ring.length / 3; i++)
+			if (
+				Math.hypot(
+					(ring[i * 3] as number) - c.l,
+					(ring[i * 3 + 1] as number) - c.a,
+					(ring[i * 3 + 2] as number) - c.b,
+				) <= SAME_SURFACE
+			)
+				n++;
+		return n;
+	};
+	return near(second.lab) > near(first.lab) ? second.lab : first.lab;
+}
+
 /** The ink colour of a text band: the quarter of its ink pixels farthest from the band's background, page colour left out. */
-export function inkOf(
-	png: PNG,
-	r: { x0: number; y0: number; x1: number; y1: number },
-	page: Lab | null,
-) {
+export function inkOf(png: PNG, r: Rect, page: Lab | null) {
 	const p = pixelsIn(png, r.x0, r.y0, r.x1, r.y1);
-	const bg = uniformColours(p, { max: 1, minShare: 0 })[0]?.lab;
+	const bg = backdropOf(png, r, p);
 	if (!bg) return null;
 	const around = page ?? bg;
 	const dist = (i: number, c: Lab) =>
@@ -89,9 +141,11 @@ export function inkOf(
 		m.a += p[i * 3 + 1] as number;
 		m.b += p[i * 3 + 2] as number;
 	}
+	// Large bands are sampled sparsely: weigh the ink by the frame pixels it covers, not by its samples.
+	const area = (r.x1 - r.x0) * (r.y1 - r.y0);
 	return {
 		lab: { l: m.l / top.length, a: m.a / top.length, b: m.b / top.length },
-		weight: far.length,
+		weight: Math.round((far.length / (p.length / 3)) * area),
 	};
 }
 

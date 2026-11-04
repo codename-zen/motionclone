@@ -11,6 +11,9 @@ const keyOf = (m: MovingProperty) =>
 const travel = (w: MovingProperty["window"]) =>
 	Math.abs(w.thereAndBack ? w.peak - w.from : w.change);
 
+/** A change that completes between two frames has no intermediate frame, so it is a state change, not motion. */
+const isMotion = (m: MovingProperty) => m.window.durationMs > 0;
+
 const described = (m: MovingProperty) =>
 	`${keyOf(m)} ${movement(m.window.from, m.window.to, unitOf(m.property))} from ${Math.round(m.window.startMs)} ms`;
 
@@ -53,7 +56,7 @@ export async function checkReducedMotion(
 			dir,
 			"no tracked element of the clone moves, so there is no motion to reduce; track the moving elements with --track",
 		);
-	const reduced = motionProperties(reducedTrack);
+	const reduced = motionProperties(reducedTrack).filter(isMotion);
 	const byKey = new Map(reduced.map((m) => [keyOf(m), m]));
 	const unchanged = motions.filter((m) => {
 		if (m.property === "opacity") return false;

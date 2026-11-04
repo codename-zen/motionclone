@@ -166,6 +166,7 @@ It does not fail the result.
 ## Default tolerances
 
 | Check                          | Tolerance             |
+A change that completes between two frames counts as a state change, not as movement.
 | ------------------------------ | --------------------- |
 | Start, end, duration           | ±80 ms                |
 | Gap between siblings (stagger) | ±40 ms                |

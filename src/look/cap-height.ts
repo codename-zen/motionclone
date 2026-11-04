@@ -30,11 +30,12 @@ const TALL = 1.15;
 const CAPITAL_TOP = 0.6;
 // A first letter this much over the x-height is a capital even when round (C, S, O); a t stays under it.
 const FIRST_CAPITAL = 1.25;
-// Stems alone (l, I, 1) are as wide at the top as anywhere, so they tell nothing.
-const STEM = 0.3;
-// Ascenders with a serif or hook (Georgia l, f) can be wide at the top too, but stand taller than the capitals:
-// the lowest height that holds a third of the wide letters is the cap height.
-const SHARE = 3;
+// Capitals and digits of one size differ by up to this share under hinting (9 to 9.8 px digits at 14 px).
+const CAPS_SPLIT = 0.05;
+// Capitals reach 0.91 to 0.95 of the ascenders, t 0.81 to 0.88 (Segoe UI, Georgia, Liberation Serif).
+const T_UNDER = 0.895;
+// Narrow letters tell nothing from their top: stems (l, I, 1), a serif l, and a t whose top fills its narrow box.
+const STEM = 0.36;
 // x-height per cap height in common sans and serif faces (Segoe UI 0.71, Georgia 0.70, Arial 0.73).
 export const X_PER_CAP = 0.71;
 // A descender whose top lies this close to a class's top shows that class is lowercase.
@@ -44,7 +45,7 @@ const median = (v: readonly number[]) =>
 	[...v].sort((a, b) => a - b)[v.length >> 1] as number;
 
 /** Letters split into classes of height at gaps, lowest first. */
-function classes(letters: readonly Letter[]): Letter[][] {
+function classes(letters: readonly Letter[], split = SPLIT): Letter[][] {
 	const sorted = [...letters].sort((a, b) => a.height - b.height);
 	const out: Letter[][] = [];
 	for (const l of sorted) {
@@ -53,7 +54,7 @@ function classes(letters: readonly Letter[]): Letter[][] {
 		if (
 			last &&
 			prev !== undefined &&
-			l.height - prev <= Math.max(SPLIT * prev, SPLIT_PX)
+			l.height - prev <= Math.max(split * prev, SPLIT_PX)
 		)
 			last.push(l);
 		else out.push([l]);
@@ -62,6 +63,14 @@ function classes(letters: readonly Letter[]): Letter[][] {
 }
 
 const heightOf = (c: readonly Letter[]) => median(c.map((l) => l.height));
+// Hinting and blur shorten a capital or digit more often than they stretch it: a few are read at their upper
+// quartile, many at their median.
+const upper = (c: readonly Letter[]) =>
+	c.length >= 4
+		? heightOf(c)
+		: ([...c.map((l) => l.height)].sort((a, b) => a - b)[
+				Math.floor(0.75 * c.length)
+			] as number);
 const capitalLike = (l: Letter, x: number) =>
 	l.aspect >= STEM &&
 	(l.topWidth >= CAPITAL_TOP ||
@@ -100,10 +109,16 @@ export function capHeight(
 	}
 	const x = heightOf(common);
 	const tall = over(common);
-	const wide = tall.filter((l) => capitalLike(l, x));
-	const caps = classes(wide).find((c) => c.length * SHARE >= wide.length);
+	// t stands under the capitals by more than they stand under the ascenders: under T_UNDER of the tallest letters.
+	const highest = classes(tall)
+		.filter((c) => c.length >= 2)
+		.at(-1);
+	const floor = highest ? T_UNDER * heightOf(highest) : 0;
+	const wide = tall.filter((l) => l.height >= floor && capitalLike(l, x));
+	// The height most wide letters share; on a tie the lower one, since ascenders stand over the capitals.
+	const caps = largest(classes(wide, CAPS_SPLIT));
 	if (caps)
-		return { cap: heightOf(caps), basis: "capitals", glyphs: caps.length, x };
+		return { cap: upper(caps), basis: "capitals", glyphs: caps.length, x };
 	// No capital stands out: the tallest letters (ascenders, or capitals that blur hides) are read instead.
 	const top = classes(tall).at(-1);
 	if (top)

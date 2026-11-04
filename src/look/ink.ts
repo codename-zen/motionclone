@@ -62,11 +62,12 @@ function pixelsIn(
 export function inkOf(
 	png: PNG,
 	r: { x0: number; y0: number; x1: number; y1: number },
-	page: Lab,
+	page: Lab | null,
 ) {
 	const p = pixelsIn(png, r.x0, r.y0, r.x1, r.y1);
 	const bg = uniformColours(p, { max: 1, minShare: 0 })[0]?.lab;
 	if (!bg) return null;
+	const around = page ?? bg;
 	const dist = (i: number, c: Lab) =>
 		Math.hypot(
 			(p[i * 3] as number) - c.l,
@@ -77,7 +78,7 @@ export function inkOf(
 	// In a band across a surface's edge, the page showing around the surface is not ink.
 	for (let i = 0; i < p.length / 3; i++) {
 		const d = dist(i, bg);
-		if (d > INK && dist(i, page) > INK) far.push({ d, i });
+		if (d > INK && dist(i, around) > INK) far.push({ d, i });
 	}
 	if (far.length < 8) return null;
 	const ink = withoutFringes(p, far).sort((a, b) => b.d - a.d);

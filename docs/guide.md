@@ -190,7 +190,7 @@ It does not fail the result.
 - From a video, an opacity row that the pixels contradict drops to medium or low confidence; its notes give both numbers.
 - From a video, a small opacity rise (under 15 %) while the same element ends a slide is motion blur clearing, not a fade.
   It goes to `dropped` with that reason.
-- A line whose only capital is round (C, S, O) may read its ascenders, about 6 % taller than the capitals.
+- A line with a single capital among many lowercase letters, and no neighbour of the same x-height, may read its ascenders, up to 2 px over the capitals.
 - When a video region cuts off its element during a move, the row's distance is a lower bound (`distanceObserved: "lower-bound"`).
   A rebuild that moves further passes; the report says so in a note.
 - Progress rows only cover changes that mix the frames before and after, like fades and cross-fades.

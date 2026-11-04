@@ -64,7 +64,7 @@ function joinShort(runs: Run[]): Run[] {
 	};
 	for (const r of runs) {
 		const last = pending.at(-1)?.on;
-		const h = median(r.on.map(heightOf));
+		const h = Math.max(...[...r.on, ...(last ?? [])].map(heightOf));
 		const gap = last
 			? Math.min(...r.on.map((g) => g.x0)) - Math.max(...last.map((g) => g.x1))
 			: 0;
@@ -80,10 +80,17 @@ function joinShort(runs: Run[]): Run[] {
 const JOIN_GAP = 6;
 // Glyphs of one height differ by under this share of their median.
 const EVEN = 0.06;
+// Most of them must share it: thin digits can break into pieces at half contrast, a pair of words mostly does not.
+const EVEN_SHARE = 0.6;
 
+/** Whether most glyphs (not dots) have one height, at least MIN_GLYPHS of them. */
 export function evenHeights(glyphs: Glyph[]): boolean {
-	const real = glyphs.filter((g) => !g.dot);
-	if (real.length < MIN_GLYPHS) return false;
-	const m = median(real.map(heightOf));
-	return real.every((g) => Math.abs(heightOf(g) - m) <= EVEN * m);
+	const all = glyphs.filter((g) => !g.dot).map(heightOf);
+	// Pieces under half the tallest glyph are dots and fragments, not letters of another height.
+	const hs = all.filter((h) => h >= 0.5 * Math.max(...all));
+	const most = Math.max(
+		0,
+		...hs.map((h) => hs.filter((o) => Math.abs(o - h) <= EVEN * h).length),
+	);
+	return most >= MIN_GLYPHS && most >= EVEN_SHARE * hs.length;
 }

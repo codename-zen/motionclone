@@ -55,7 +55,7 @@ function lineInk(
 	png: PNG,
 	lines: readonly TypeLine[],
 	keep: (l: TypeLine) => boolean,
-	background: Lab,
+	background: Lab | null,
 	cssPerPx: number,
 ): { hex: string; share: number } | null {
 	const inks = lines.flatMap((l) => {
@@ -208,7 +208,12 @@ export function pixelLook(
 		.map(([k, n]) => ({ hex: labToHex(labs[k] as Lab), share: r4(n / total) }));
 	return {
 		background: fills[0] ? labToHex(fills[0].lab) : "#ffffff",
-		text: mainInk(inks),
+		// Read over each line's letters against what is behind them, so text on a sheet is not judged by the page.
+		text:
+			lines.length > 0
+				? (lineInk(png, lines, () => true, null, clip.width / png.width)?.hex ??
+					mainInk(inks))
+				: mainInk(inks),
 		palette: kmeansPalette(grid.lab, labs),
 		surfaces: surfaceSwatches,
 		regions: looks,

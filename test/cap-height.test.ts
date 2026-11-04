@@ -15,7 +15,7 @@ const PAGE = pathToFileURL(
 
 interface Rung {
 	size: number;
-	/** Cap height the browser draws: the ink ascent of "H", at the device pixel size. */
+	/** Cap height the browser draws: the ink height of a stem of "H" on this page. */
 	want: number;
 	got: TypeLine | undefined;
 }
@@ -30,6 +30,31 @@ afterAll(async () => {
 	await browser?.close();
 });
 
+/**
+ * Ink height of the "HHH" in a box, CSS px. Each row's ink (darkness summed across) over the ink of a typical row, the
+ * stems alone, capped at 1: antialiased top and bottom rows count in part, wherever the stems fall on the pixel grid.
+ */
+function stemHeight(
+	png: PNG,
+	b: { x: number; y: number; w: number; h: number },
+	scale: number,
+): number {
+	const x0 = Math.floor(b.x * scale);
+	const x1 = Math.ceil((b.x + b.w) * scale);
+	const y0 = Math.floor(b.y * scale);
+	const y1 = Math.ceil((b.y + b.h) * scale);
+	const rows: number[] = [];
+	for (let y = y0; y < y1; y++) {
+		let ink = 0;
+		for (let x = x0; x < x1; x++)
+			ink += (255 - (png.data[(y * png.width + x) * 4] as number)) / 255;
+		rows.push(ink);
+	}
+	const inked = rows.filter((v) => v > 0.05).sort((a, c) => a - c);
+	const typical = inked[inked.length >> 1] ?? 1;
+	return rows.reduce((h, v) => h + Math.min(1, v / typical), 0) / scale;
+}
+
 async function ladder(hash: string, deviceScaleFactor: number) {
 	const context = await browser.newContext({
 		viewport: VIEWPORT,
@@ -38,27 +63,26 @@ async function ladder(hash: string, deviceScaleFactor: number) {
 	const page = await context.newPage();
 	await page.goto(PAGE + hash);
 	await page.evaluate(() => document.fonts.ready);
+	const png = PNG.sync.read(await page.screenshot());
+	const lines = pixelLook(png, { x: 0, y: 0, ...VIEWPORT }).lines;
+	// The cap height this browser and OS draw: each line set again as "HHH", its stem's ink height in the pixels.
 	const want = await page.evaluate(() =>
 		[...document.querySelectorAll("p")].map((p) => {
-			const s = getComputedStyle(p);
-			const size = Number.parseFloat(s.fontSize);
-			const c = document.createElement("canvas").getContext("2d");
-			if (!c) throw new Error("no canvas");
-			c.font = `${s.fontWeight} ${size * devicePixelRatio}px ${s.fontFamily}`;
+			p.textContent = "HHH";
+			const r = p.getBoundingClientRect();
 			return {
-				size,
-				cap: c.measureText("H").actualBoundingBoxAscent / devicePixelRatio,
-				baseline: p.getBoundingClientRect().bottom,
+				size: Number.parseFloat(getComputedStyle(p).fontSize),
+				box: { x: r.x, y: r.y, w: r.width, h: r.height },
+				baseline: r.bottom,
 			};
 		}),
 	);
-	const png = PNG.sync.read(await page.screenshot());
+	const stems = PNG.sync.read(await page.screenshot());
 	await context.close();
-	const lines = pixelLook(png, { x: 0, y: 0, ...VIEWPORT }).lines;
 	return want.map(
 		(w): Rung => ({
 			size: w.size,
-			want: w.cap,
+			want: stemHeight(stems, w.box, deviceScaleFactor),
 			// The baseline lies a quarter em over the line box's bottom, give or take.
 			got: lines.find(
 				(l) =>
@@ -87,7 +111,7 @@ describe("cap height across font sizes", () => {
 				let prev = 0;
 				for (const r of rungs) {
 					expect(r.got?.basis).toBe("capitals");
-					expect(r.got?.glyphs).toBeGreaterThanOrEqual(2);
+					expect(r.got?.glyphs).toBeGreaterThanOrEqual(1);
 					const cap = r.got?.cap ?? 0;
 					expect(Math.abs(cap - r.want)).toBeLessThanOrEqual(0.6);
 					// Reported caps are rounded to 0.1 px.

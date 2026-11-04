@@ -164,9 +164,9 @@ describe("video of a page that flips its background while a sheet slides, rebuil
 
 	it("fails text 25 % smaller on its type rows and its text score", () => {
 		const v = verdicts.small as Verdict;
-		// Thinner glyphs also read lighter where the OS draws them thin (Linux: ΔE 8.7), so the main text colour may fail too.
+		// Thinner glyphs also read lighter where the OS draws them thin (Linux: ΔE 8.7), so text colours may fail too.
 		const last = failingLook("small").filter((id) => !id.startsWith("dark."));
-		expect(last.filter((id) => id !== "look.text")).toEqual([
+		expect(last.filter((id) => !id.endsWith("look.text"))).toEqual([
 			"look.type#1",
 			"look.type#2",
 			"sheet[0].look.type#1",

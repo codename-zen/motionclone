@@ -84,14 +84,17 @@ A line's cap height ran to its tallest glyph, which was an ascender, a hooked f 
 It is now read per line from glyph classes:
 - letter heights over the baseline split into classes where neighbours differ by more than 3.5 % and 0.35 frame px;
 - the class with the most letters is the x-height (or the capitals of a line in capitals);
-- capitals are letters at least 1.15 x-heights tall that are wide at the top (ink across 60 % of their width in their top fifth) and not a bare stem (width under 0.3 of the height), plus a first letter at least 1.25 x-heights tall;
-- t and the ascenders of b, d, h, k have only a stem at the top, and serif or hooked ascenders (Georgia l, f) stand taller than the capitals, so the lowest class holding a third of the capitals is the cap height;
+- capitals are letters at least 1.15 x-heights tall that are wide at the top (ink across 60 % of their width in their top fifth) and not narrow (width under 0.36 of the height: stems, a serif l, a Liberation Serif t), plus a first letter at least 1.25 x-heights tall;
+- t stands under the capitals by more than they stand under the ascenders (t 0.81 to 0.88 of the ascenders, capitals 0.91 to 0.95), so letters under 0.895 of the tallest class of two or more are not capitals;
+- the class (split at 5 %) holding the most capitals is the cap height, the lower one on a tie; its median with four or more letters, else its upper quartile, since hinting and blur shorten a digit more often than they stretch it;
 - a line without capitals uses its x-height divided by 0.71; a line of one height with no descender as high is capitals or digits;
 - a line with no two letters of one height (signal bars, icons) is no line.
   A line read from one glyph or from its x-height takes the median cap height of the frame's lines with the same x-height, when there are three or more.
   Each line records its basis (`capitals` or `x-height`) and the number of glyphs; type row notes give both.
-  On `fixtures/type-ladder` (one line per size, 14 to 24 px in steps of 0.5 px, against the ink ascent of "H" from the canvas) every size reads within 0.1 px in Segoe UI and Georgia at 1x and 1.5x, never smaller than the size before.
-  The same ladder in lowercase with one capital reads within 1.4 px (ascenders) and stays monotonic.
+  On `fixtures/type-ladder` (one line per size, 14 to 24 px in steps of 0.5 px) the expected cap height is the page's own: each line is set again as "HHH" and the ink height of its rows is read from the screenshot.
+  Canvas `measureText` differs from DOM text by up to 2 px on Linux, so it is not the reference.
+  Every size reads within 0.1 px in Segoe UI and Georgia on Windows and within 0.51 px in WenQuanYi Zen Hei (`system-ui` there) and Liberation Serif on Linux, at 1x and 1.5x, never smaller than the size before.
+  The same ladder in lowercase with one capital reads within 2 px on Windows (its ascenders); such lines are a limit.
   On `sheet-flip` every 19 px task title reads 13 px, the ink ascent of its capitals; "Send the draft" alone read 14 px (its f) and "Call the bakery" 14.1 px (its x-height) before the lines of one x-height were pooled.
 
 ## Decision: other content is not another size
@@ -99,7 +102,7 @@ It is now read per line from glyph classes:
 On the phone recording `dark.sheet[0].look.type#1` (the reference's two-digit dates, 15.9 px) failed against the rebuild's labels (7.4 px).
 The rebuild's dates were mostly one digit; each date sat in a band of its own with fewer than three glyphs, so it was no line, and the nearest baseline within three cap heights stood in.
 Two changes:
-- glyphs left over in their bands are pooled across bands and read again; short runs on one baseline join into a line when their glyphs differ in height by under 6 % and lie at most 6 glyph heights apart;
+- glyphs left over in their bands are pooled across bands and read again; short runs on one baseline join into a line when 60 % of their glyphs (pieces under half the tallest left out) are within 6 % of one height and the runs lie at most 6 glyph heights apart, since thin digits break into pieces on Linux;
 - the nearest-baseline fallback only takes a clone line that shares rows with the reference line (their bands from cap top to baseline overlap); the same row of a column of as many lines still pairs as before.
   A row with no clone line left is not comparable: `comparable: false`, it passes, it is not counted in the look summary (`notComparable` counts it) and the report lists it under "Not comparable".
   A line whose only tall glyph is one ascender, with no capital and no neighbour of its x-height, is dropped: blurred small capitals split into pieces and read 7.4 px for 8.7 px labels.
@@ -119,6 +122,7 @@ Verify reads each row on the clone frame with the index of its state's frame, th
 
 From pixels, every state also gets:
 - the text colour per region and outside the regions (`sheet[0].look.text`, `look.outside.text`), read over the letters of each line against the region's own background, when one colour holds 60 % of the ink;
+- the main text colour is read the same way, over each line's letters against what is behind them; read from bands with the page colour left out, dark text on a white sheet over a dark page changed with the page's colour (a grey dark state moved it by ΔE 18 on Linux);
 - the large panel: the widest flat block that is not the page, at least 60 % of the screen wide and 10 % tall, with its top edge to a sub-pixel (where the colour crosses from what is above it to the panel's, up to its first full pixel) within ±3 % of the screen, and its corner radius within ±20 %.
   The radius comes from each row of the top corners: an inset `i` at depth `d` under the edge lies on a circle of radius `i + d + sqrt(2 i d)`; the median of both corners.
   Blocks the colour of what surrounds them (the page, or a larger block they lie in) get no row: only a hairline border makes them blocks, and a video blurs it wider than a crisp rebuild draws it.
@@ -200,7 +204,7 @@ The blurred SSIM alone passes the smaller text; the type rows and the text score
 - Video references get no font rows and a radius row only for the large panel; type sizes are cap heights, not font sizes, and a note gives the font size a cap height of 0.7 em would mean.
 - A rebuild that wraps text into more lines in a column is paired by nearest baseline there, which can pair a line with one of another size.
 - Rest states are told apart by background colour only; two states of one background (a panel open and closed on the same page) share the rows of the later one.
-- A line whose only capital is round (C, S, O) and that has no neighbour of the same x-height may read its ascenders, about 6 % over the capitals.
+- A line with a single capital among many lowercase letters, and no neighbour of the same x-height, may read its ascenders, up to 2 px over the capitals at 14 to 24 px.
 - Region and outside text colours are rows only when one colour holds 60 % of the text; mixed text is left to the eye.
 - Text colour from pixels comes from antialiased glyphs: thin light text reads darker or lighter by a few ΔE.
 - Photos inside a block break its flat fill, so that block becomes ink and gets no block row.

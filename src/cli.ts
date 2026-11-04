@@ -83,10 +83,19 @@ async function capture(args: string[]): Promise<number> {
 }
 
 async function probe(args: string[]): Promise<number> {
-	const { values: v, positionals: p } = parse(args, {});
+	const { values: v, positionals: p } = parse(args, {
+		screen: { type: "boolean" },
+		sheet: { type: "string" },
+		every: { type: "string" },
+	});
 	if (v.help) return help("probe");
 	const [file] = exactly(p, 1, "motionclone probe <video|gif>") as [string];
-	for (const line of await probeLines(file)) out(line);
+	const lines = await probeLines(file, {
+		screen: v.screen,
+		sheet: v.sheet,
+		every: num("every", v.every),
+	});
+	for (const line of lines) out(line);
 	return 0;
 }
 

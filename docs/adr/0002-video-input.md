@@ -308,7 +308,36 @@ Tracking that region takes about 19 s, as before.
 `--like <videoCaptureDir>` used to take only fps, duration and a load trigger, so a clone of a phone recording was captured at 1280x800 and scale 1, and every look check failed (background ΔE 92.6, SSIM 0.25) until the viewport was set by hand; the density could not be matched at all.
 The clone now also takes the recorded screen: the viewport is the crop divided by `cssScale` (rounded), and the device scale factor is `scale * cssScale` (the css scale unless `--width` rescaled the frames), so clone frames have the reference frames' pixel size: 600x1032 at `--css-scale 1.5` gives 400x688 at 1.5x.
 Explicit flags still override, and the clone's `capture.json` records what was derived under `options.likeVideo` (capture, crop, cssScale, scale, frameSize, viewport, deviceScaleFactor).
-A crop that does not divide by the css scale gives frames up to one pixel off.
+A crop that does not divide by the css scale gave frames up to one pixel off.
+
+## Decision: crop geometry
+
+A user test cropped a 1920x1080 recording with `--crop 659,56,600,1023 --css-scale 1.5` and got 600x1022 reference frames but 600x1023 clone frames, with no warning.
+ffmpeg's crop filter rounds offsets and sizes down to even numbers on yuv420p input, so the frames lost a row and shifted a column.
+Extraction now converts to RGB before cropping, so odd offsets and sizes are kept exactly.
+The crop is then trimmed at the right and bottom (at most 32 px) to the largest size that is a whole number of CSS pixels at `cssScale`, with a warning that names the new crop; x and y stay, so region coordinates stay valid.
+No even size is needed, because frames are written as PNG.
+`--like` takes the viewport from the reference frame size divided by the device scale factor, and after the capture compares the clone's first frame with the reference frame size and warns when they differ (unless `--viewport` was set).
+With `--width` the frame height can still be fractional in CSS pixels; that case is left to the warning.
+
+## Decision: finding the screen in a recording
+
+A phone recording is often a 1920x1080 frame with the phone in the middle; the same user test needed its own pixel scan to find the screen and its own contact sheets to choose time ranges.
+`probe` now decodes the clip once as luma (sampled down to about 900 frames) and keeps the mean frame, a per-pixel count of frame-to-frame changes above 12 luma levels, and per-frame changed-pixel counts in 16 px blocks.
+The motion box holds 99 % of the pixels that changed at least twice.
+From the motion box each side scans outward for a straight edge: a step of at least 10 luma levels on the mean frame along 75 % of the middle 70 % of the side, with a 4 px strip outside it that is uniform (within 6 levels) and still.
+The middle of the side is used so rounded corners and notches do not count; the edge is placed on the largest step within one pixel.
+Each side keeps its innermost edge whose outside colour another side shares (the bezel ring), so a light frame and a coloured background outside the bezel are passed over.
+Sides with no edge run to the frame edge.
+The guess is confident when two opposite sides have edges, two sides share the outside colour, and at least 90 % of the motion lies inside; only then is it printed by default.
+The css scale is the round ratio (0.5 to 4 in quarter steps) whose CSS width lands nearest a common phone width (360 to 440 CSS px), and the suggested crop is trimmed to whole CSS pixels at that scale.
+Motion windows are stretches of frame steps whose changed pixels inside the screen pass the larger of 16 px, 0.05 % of the screen, and three times the 20th percentile, bridging pauses of up to two steps; each runs from the last still frame before to the frame the motion lands on.
+Windows whose biggest change is under 5 % of the biggest window's are counted as small changes and not listed.
+`--sheet <dir>` draws one frame every `--every` ms (default at most 48 tiles), cropped to the screen when confident, labelled with time and decoder frame number in the built-in bitmap font.
+
+On a synthetic recording (a 390x600 CSS px screen at 1.5x inside a black bezel, a grey frame and a red background, h264 crf 18) the screen comes out exactly at 300,60 585x900 with css scale 1.5, and both motion windows match the tracked transitions to the frame.
+On the user's 1920x1080 recording, 56 fps and 8 s, `probe --screen` takes about 6 s and finds the screen at 659,51 601x1029 (edges left, right and top; the bottom runs off the frame), suggests `--crop 659,51,600,1029 --css-scale 1.5` (400x686 CSS px), and lists the four slides at 0.63-1.05, 2.59-3.00, 4.77-5.16 and 6.96-7.43 s.
+A static, uniform band inside the screen that matches the bezel colour, or a screen with no visible edge against its background, can still mislead the guess; the output says when it is unsure.
 
 ## Limits
 

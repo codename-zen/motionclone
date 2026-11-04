@@ -4,7 +4,7 @@ Usage: motionclone <command> [options]
 
 Commands:
   capture <url|path|video>   Record frames and element tracks (--help for options)
-  probe <video|gif>    Print size, frame rate, duration and codec
+  probe <video|gif>    Print size, frame rate, duration, codec, the device screen and the motion windows
   spec <captureDir>    Draft spec.json from a reference capture
   verify <spec|captureDir> <cloneDir>   Check a clone capture against the spec
   report <verdict.json>   Print a verdict as markdown
@@ -75,9 +75,17 @@ Drafts <captureDir>/spec.json from the capture and prints one line per row.
 Exit code: 0 all rows pass, 1 rows fail, 2 setup error or bad input,
 3 no checks (no motion or look row was checked, so nothing was compared).
 `,
-	probe: `Usage: motionclone probe <video|gif>
+	probe: `Usage: motionclone probe <video|gif> [--screen] [--sheet <dir>] [--every <ms>]
 
-Prints size, frame rate, duration and codec of a recording.
+Prints size, frame rate, duration and codec of a recording, then:
+  screen:     the device screen inside the frame (bounded by a bezel or a plain background)
+  suggested:  --crop and --css-scale for capture; the crop spans whole CSS pixels
+  motion:     time windows where the screen changes, to pick --start and --end
+
+  --screen        Print the screen guess even when unsure (it is left out otherwise)
+  --sheet <dir>   Write <dir>/contact-sheet.png: a labelled frame every --every ms,
+                  cropped to the screen when one is found
+  --every <ms>    Contact sheet interval (default: at most 48 frames)
 `,
 	report: `Usage: motionclone report <verdict.json>
 

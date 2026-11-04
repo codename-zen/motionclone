@@ -1,10 +1,13 @@
 import { existsSync, readFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { PNG } from "pngjs";
 import { z } from "zod";
 import { type CaptureInput, captureMotion } from "../capture/index.ts";
 import type { CaptureSummary } from "../capture/types.ts";
 import { type CaptureFile, readCaptureFile } from "../spec/capture-file.ts";
 import { isVideoCapture } from "../verify/setup.ts";
+import { framePng } from "../video/luma.ts";
 
 export class UsageError extends Error {}
 
@@ -172,16 +175,16 @@ interface VideoSection {
 
 /**
  * The base for a clone of a recording: its fps and duration with a load trigger, and the screen it shows, so
- * clone frames have the reference frames' pixel size: the crop in CSS pixels as the viewport, and video pixels
- * per CSS pixel as the device scale factor.
+ * clone frames have the reference frames' pixel size: the frames in CSS pixels as the viewport, and frame
+ * pixels per CSS pixel as the device scale factor.
  */
 function likeVideo(dir: string, ref: CaptureFile): Partial<CaptureInput> {
 	const v = (ref as CaptureFile & { video: VideoSection }).video;
-	const viewport = {
-		width: Math.max(1, Math.round(v.crop.w / v.cssScale)),
-		height: Math.max(1, Math.round(v.crop.h / v.cssScale)),
-	};
 	const deviceScaleFactor = v.scale * v.cssScale;
+	const viewport = {
+		width: Math.max(1, Math.round(v.frameSize.width / deviceScaleFactor)),
+		height: Math.max(1, Math.round(v.frameSize.height / deviceScaleFactor)),
+	};
 	return {
 		fps: ref.options.fps,
 		durationMs: ref.options.durationMs,
@@ -246,6 +249,30 @@ export async function buildCaptureInput(a: CaptureArgs): Promise<CaptureInput> {
 	return input as CaptureInput;
 }
 
+/** A clone of a recording must have the reference frames' pixel size; frames that differ are named in a warning. */
+async function checkLikeVideoSize(
+	input: CaptureInput,
+	s: CaptureSummary,
+): Promise<void> {
+	const like = input.likeVideo;
+	const want = like?.frameSize;
+	const vp = input.viewport;
+	if (!like || !want || s.frames === 0) return;
+	if (
+		vp &&
+		(vp.width !== like.viewport.width || vp.height !== like.viewport.height)
+	)
+		return;
+	const png = PNG.sync.read(await readFile(framePng(s.outDir, 0)));
+	if (png.width !== want.width || png.height !== want.height)
+		s.warnings.push(
+			`clone frames are ${png.width}x${png.height} px but the reference frames are ${want.width}x${want.height} px: capture the reference again (its crop is now trimmed to whole CSS pixels) or pass --viewport`,
+		);
+}
+
 export async function runCapture(a: CaptureArgs): Promise<CaptureSummary> {
-	return captureMotion(await buildCaptureInput(a));
+	const input = await buildCaptureInput(a);
+	const s = await captureMotion(input);
+	await checkLikeVideoSize(input, s);
+	return s;
 }

@@ -55,10 +55,22 @@ export function createServer(): McpServer {
 		"probe",
 		{
 			description:
-				"Read the size, frame rate, duration and codec of a recording or gif before capturing it.",
-			inputSchema: { file: z.string().describe("Path to the video or gif") },
+				"Read the size, frame rate, duration and codec of a recording or gif before capturing it, plus the device screen inside the frame with a suggested crop and cssScale, and the time windows with motion. Use it first on screen recordings.",
+			inputSchema: {
+				file: z.string().describe("Path to the video or gif"),
+				screen: z
+					.boolean()
+					.optional()
+					.describe("Print the screen guess even when unsure"),
+				sheet: z
+					.string()
+					.optional()
+					.describe("Directory for contact-sheet.png, a labelled frame grid"),
+				every: z.number().optional().describe("Contact sheet interval in ms"),
+			},
 		},
-		({ file }) => guarded(async () => (await probeLines(file)).join("\n")),
+		({ file, ...a }) =>
+			guarded(async () => (await probeLines(file, a)).join("\n")),
 	);
 
 	server.registerTool(

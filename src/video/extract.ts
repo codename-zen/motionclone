@@ -1,6 +1,7 @@
 import { copyFile, mkdir, readdir, rename, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { writeVideoCaptureFile } from "./capture-file.ts";
+import { fitCropToScale } from "./crop-fit.ts";
 import { type FrameScan, runFfmpegOrThrow, scanFrames } from "./ffmpeg.ts";
 import {
 	type ExtractInput,
@@ -61,14 +62,20 @@ export function pickFrames(
 	return out;
 }
 
-function checkCrop(crop: PixelRect | undefined, probe: VideoProbe): PixelRect {
+function checkCrop(
+	crop: PixelRect | undefined,
+	probe: VideoProbe,
+	cssScale: number,
+	warnings: string[],
+): PixelRect {
 	const full = { x: 0, y: 0, w: probe.width, h: probe.height };
-	if (!crop) return full;
-	if (crop.x + crop.w > probe.width || crop.y + crop.h > probe.height)
+	if (crop && (crop.x + crop.w > probe.width || crop.y + crop.h > probe.height))
 		throw new Error(
 			`crop ${JSON.stringify(crop)} lies outside the ${probe.width}x${probe.height} video`,
 		);
-	return crop;
+	const fitted = fitCropToScale(crop ?? full, cssScale);
+	if (fitted.warning) warnings.push(fitted.warning);
+	return fitted.crop;
 }
 
 /** Extract lossless PNG frames on an exact start + k / fps grid and write capture.json. */
@@ -81,7 +88,7 @@ export async function extractFrames(
 	const warnings: string[] = [];
 	const probe = await probeVideo(src);
 	const scan = await scanFrames(src);
-	const crop = checkCrop(opts.crop, probe);
+	const crop = checkCrop(opts.crop, probe, opts.cssScale, warnings);
 	const fps = opts.fps ?? Math.min(probe.fps, MAX_DEFAULT_FPS);
 	if (!opts.fps && probe.fps > MAX_DEFAULT_FPS)
 		warnings.push(`source runs at ${probe.fps} fps; extracted at ${fps} fps`);
@@ -108,8 +115,12 @@ export async function extractFrames(
 	const first = sourceFrames[0] as number;
 	const last = sourceFrames.at(-1) as number;
 	const filters = [`select='between(n,${first},${last})'`];
+	// Cropping after the conversion to RGB keeps odd sizes and offsets: on yuv420p ffmpeg rounds them to even.
 	if (crop.w !== probe.width || crop.h !== probe.height)
-		filters.push(`crop=${crop.w}:${crop.h}:${crop.x}:${crop.y}`);
+		filters.push(
+			"format=rgb24",
+			`crop=${crop.w}:${crop.h}:${crop.x}:${crop.y}`,
+		);
 	if (width !== crop.w || height !== crop.h)
 		filters.push(`scale=${width}:${height}`);
 

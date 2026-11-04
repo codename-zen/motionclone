@@ -1,7 +1,9 @@
 import { existsSync, statSync } from "node:fs";
 import { extname, resolve } from "node:path";
+import { writeContactSheet } from "../video/contact-sheet.ts";
 import { captureVideo, probeVideo, type VideoInput } from "../video/index.ts";
 import type { Region } from "../video/options.ts";
+import { probeScreen, screenLines } from "../video/screen-probe.ts";
 import { type CaptureArgs, numbers, UsageError } from "./capture-args.ts";
 
 const VIDEO_EXT = new Set([".mp4", ".mov", ".webm", ".gif"]);
@@ -126,16 +128,43 @@ export async function runVideoCapture(a: CaptureArgs): Promise<string[]> {
 	];
 }
 
-export async function probeLines(file: string): Promise<string[]> {
+export interface ProbeArgs {
+	/** Print the screen guess even when unsure. */
+	screen?: boolean;
+	/** Directory for contact-sheet.png. */
+	sheet?: string;
+	/** Contact sheet interval in ms. */
+	every?: number;
+}
+
+/** Size, rate, duration and codec, then the device screen, the motion windows and an optional contact sheet. */
+export async function probeLines(
+	file: string,
+	a: ProbeArgs = {},
+): Promise<string[]> {
 	const path = resolve(file);
 	if (!existsSync(path) || !statSync(path).isFile())
 		throw new UsageError(`file not found: ${file}`);
+	if (a.every !== undefined && !(a.every > 0))
+		throw new UsageError("--every must be above 0 ms");
 	const p = await probeVideo(path);
-	return [
+	const s = await probeScreen(path, p);
+	const lines = [
 		`file: ${p.path}`,
 		`size: ${p.width}x${p.height}`,
 		`fps: ${p.fps}${p.fpsFromFrames ? " (measured from frame timestamps)" : ""}`,
 		`duration: ${p.durationS === null ? "unknown" : `${p.durationS.toFixed(3)} s`}`,
 		`codec: ${p.codec}`,
+		...screenLines(s, p, a.screen ?? false),
 	];
+	if (a.sheet) {
+		const sheet = await writeContactSheet(path, p, a.sheet, {
+			everyMs: a.every,
+			crop: s.crop ?? undefined,
+		});
+		lines.push(
+			`contact sheet: ${sheet.png} (${sheet.tiles.length} frames, every ${sheet.everyMs} ms${s.crop ? ", cropped to the screen" : ""})`,
+		);
+	}
+	return lines;
 }

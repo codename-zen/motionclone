@@ -31,10 +31,16 @@ That is why motionclone refuses to compare two recordings made with different se
 ## Video and gif
 
 ```sh
-motionclone probe loader.mov
+motionclone probe loader.mov --screen --sheet probe
 motionclone capture loader.mov --out ref --start 0:03 --end 0:05 --crop 320,180,960,540 \
   --region "card[0]=40,60,280,160" --region "card[1]=340,60,280,160"
 ```
+
+`probe` prints the size, frame rate and length of the recording.
+When a phone or browser screen sits inside a larger frame, it also finds that screen and suggests `--crop` and `--css-scale`, from the width of common phones (390, 393, 402, 430 CSS px and others).
+It lists the time windows where the screen moves, so you can pick `--start` and `--end`.
+`--screen` prints the screen guess even when it is unsure.
+`--sheet <dir>` writes `contact-sheet.png`, one labelled frame every `--every` ms, cropped to the screen.
 
 - `--region name=x,y,w,h` marks one element to follow, in video pixels after the crop.
   Draw the box around everywhere the element goes during the clip.
@@ -42,6 +48,7 @@ motionclone capture loader.mov --out ref --start 0:03 --end 0:05 --crop 320,180,
 - Without `--region`, motionclone looks for moving shapes by itself and names them `blob[0]`, `blob[1]` and so on.
   A panel that slides past the edge of the screen is followed by the part that stays in view, and what it reveals or covers gets its own region.
 - `--css-scale 2` turns a recording of a 2x screen into CSS pixels.
+  The crop is trimmed at the right and bottom to a whole number of CSS pixels, and a warning shows the new crop.
 - Pick `--start` after any other content in the same spot has gone, so the region only shows the element you want.
 
 To check your page against the video, record it with `--like` and tell `verify` which selector plays each region:
@@ -52,8 +59,9 @@ motionclone verify ref mine --map card=.card
 ```
 
 `--like` on a video records your page at the size of the recorded screen.
-The viewport is the crop divided by `--css-scale`, and the page is drawn at that scale, so your frames have the same pixel size as the video frames.
+The viewport is the video frame size divided by `--css-scale`, and the page is drawn at that scale, so your frames have the same pixel size as the video frames.
 A 600x1032 crop with `--css-scale 1.5` gives a 400x688 viewport at 1.5x.
+If the sizes still differ, `capture` prints a warning.
 `--viewport`, `--fps`, `--duration` and `--trigger` still override it.
 
 ## Side by side
@@ -131,6 +139,16 @@ A line is measured from its letters: icons, dots, rules and struck-through words
 The structure score also has a text score: where the ink of each text line of the reference sits, row by row.
 Other words of the same size keep it near 1, and so does another font family of the same size; smaller or moved text lowers it.
 The **Look** section names each value that is off and the value to use.
+A cap height is read from a line's capitals and digits, the letters that are wide at the top; a line without them uses its x-height divided by 0.71.
+A line read from one letter, or from its x-height, takes the cap height of the other lines with the same x-height.
+A row of short numbers, such as dates of one or two digits, is one line when its glyphs have one height and sit on one baseline.
+A reference line is paired only with a clone line in the same place: the same row of a repeated column, or a line that shares its rows.
+When your version has no such line (other words, or no text there), the row is "not comparable": it is listed in the Look section and never fails.
+When the reference rests in more than one state, such as light and dark, each state gets its own look rows.
+Rows of the last state keep their ids; the others start with the state's name, such as `dark.look.background`, and their label gives the time of the rest frame.
+Your version is checked at the frame with the same index.
+From a video, look rows also cover the text colour of each region and outside the regions, when one colour holds most of the text.
+A large panel (60 % of the screen wide) that stands out from the page gets its top edge (±3 % of the screen) and its corner radius (±20 %).
 
 `progress` rows check how an element's look changes, such as a fade, a dim or a cross-fade.
 They are measured from pixels in the element's box, in the reference and in your version the same way.
@@ -157,6 +175,8 @@ It does not fail the result.
 | Colour (look)                  | ΔE 6, background ΔE 3 |
 | Size (look)                    | ±8 %                  |
 | Block position (look)          | ±3 % of the screen    |
+| Panel top edge (look)          | ±3 % of the screen    |
+| Panel corner radius (look)     | ±20 %                 |
 | Structure (look)               | blurred SSIM 0.9      |
 | Text score (look)              | 0.9                   |
 
@@ -168,6 +188,9 @@ It does not fail the result.
 - When an element is invisible at the start of its motion, its start value and exact easing are a best guess; only the visible part is checked.
 - Rows with weak evidence (few clear frames, a loose fit) are advisory and never fail.
 - From a video, an opacity row that the pixels contradict drops to medium or low confidence; its notes give both numbers.
+- From a video, a small opacity rise (under 15 %) while the same element ends a slide is motion blur clearing, not a fade.
+  It goes to `dropped` with that reason.
+- A line whose only capital is round (C, S, O) may read its ascenders, about 6 % taller than the capitals.
 - When a video region cuts off its element during a move, the row's distance is a lower bound (`distanceObserved: "lower-bound"`).
   A rebuild that moves further passes; the report says so in a note.
 - Progress rows only cover changes that mix the frames before and after, like fades and cross-fades.

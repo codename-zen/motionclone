@@ -54,8 +54,10 @@ motionclone probe ref.mp4
 motionclone capture ref.mp4 --out .motionclone/ref --start 1.2 --end 3 --crop 0,80,1280,640 --css-scale 2   --region "card[0]=40,60,300,200" --region "card[1]=360,60,300,200"
 ```
 
-- `probe` prints size, frame rate, duration and codec; check them before choosing anything.
-- Pick `--start`, `--end` and `--crop` from a few frames: capture a short range to a scratch directory, open frames/0000.png and a late frame, then cut dead time and unrelated UI.
+- For a screen recording, run `motionclone probe ref.mp4 --screen --sheet .motionclone/probe` first.
+  It prints the device screen, a `--crop` and `--css-scale` to use, and the time windows with motion; the sheet is a labelled frame grid of the screen.
+- Take `--start` and `--end` from the motion windows, and check them on the sheet.
+- A crop is trimmed to whole CSS pixels at `--css-scale` (with a warning), so the clone's frames match the reference's size.
 - `--css-scale` is video pixels per CSS pixel (2 for a recording of a 2x screen), so distances come out in CSS px.
 - `--region name=x,y,w,h` boxes one element, in cropped video pixels; a loose box is fine.
 - Name repeated elements `card[0]`, `card[1]`: they become selector `card` with those indexes, and the spec links their stagger.
@@ -86,6 +88,8 @@ Notes:
 - A looping reference (several cycles in the clip) must be rebuilt over the whole clip, not one cycle.
   Capture with `--trigger none` and a duration that covers every cycle, and check the later cycles too.
 - A sheet compares looks, not motion; mid-motion frames will differ and that is fine.
+- When the reference rests in more than one state (light and dark, a panel open and closed), build and check each state, not one static layout.
+  The design sheet shows every rest state, and the spec has look rows for each one, such as `dark.look.background`.
 
 ## 3. Draft the spec
 
@@ -126,7 +130,7 @@ motionclone verify .motionclone/ref .motionclone/clone --map "card=.card"
 ```
 
 - `--like` on a recording copies its fps and clip length and uses the load trigger; `--track` is required, and the url is the clone page.
-- It also sizes the clone like the recorded screen: the viewport is the crop divided by `--css-scale`, and the device scale factor is the css scale, so clone frames have the same pixel size as the video frames.
+- It also sizes the clone like the recorded screen: the viewport is the reference frame size divided by `--css-scale`, and the device scale factor is the css scale, so clone frames have the same pixel size as the video frames; a warning says when they still differ.
   Do not add `--viewport` unless the clone must differ.
 - Only fps must match the recording; viewport, trigger and seed are not compared.
 - `--map refName=cloneSelector` renames the clone's tracks to the region names, repeatable; `card=.card` maps every index, `card[2]=.x[0]` one element.

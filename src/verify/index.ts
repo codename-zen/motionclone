@@ -1,6 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { readTrack } from "../measure/elements.ts";
+import { frameRegion } from "../pixel/region.ts";
 import { readAnimations, readCaptureFile } from "../spec/capture-file.ts";
 import { observationModel } from "../spec/observe.ts";
 import { SpecFile } from "../spec/schema.ts";
@@ -17,11 +18,17 @@ import {
 	renameTrack,
 } from "./map.ts";
 import {
+	flagExtraMotions,
+	propertyKey,
+	wantedMotions,
+} from "./motion-count.ts";
+import {
 	comparePixels,
 	DEFAULT_PIXEL_THRESHOLD,
 	skippedPixels,
 } from "./pixels.ts";
-import { measurePixelRows, needsPixels } from "./progress.ts";
+import { measurePixelRows, needsPixels, placeRegion } from "./progress.ts";
+import { checkReducedMotion } from "./reduced-motion.ts";
 import {
 	checkMotionRow,
 	checkStill,
@@ -33,6 +40,7 @@ import {
 	type RowVerdict,
 	VERDICT_VERSION,
 	Verdict,
+	type VerdictStatus,
 } from "./schema.ts";
 import { isVideoCapture, setupErrors } from "./setup.ts";
 
@@ -105,18 +113,24 @@ export async function verify(
 		const specRows = video
 			? spec.rows.map((r) => ({ ...r, relativeDistance: null }))
 			: spec.rows;
+		const wanted = wantedMotions(specRows);
 		const measured = new Map<string, CloneMotion>(
-			specRows.map((r) => [r.id, measureClone(idx, r)]),
+			specRows.map((r) => [
+				r.id,
+				measureClone(idx, r, wanted.get(propertyKey(r))),
+			]),
 		);
 		const fromPixels = specRows.filter((r) =>
 			needsPixels(r, measured.get(r.id), video),
 		);
+		const frame = frameRegion(refTrack, refCap.clip);
 		if (fromPixels.length > 0)
 			for (const [id, c] of await measurePixelRows(
 				clone,
 				renamed,
 				cloneCap.clip,
 				fromPixels,
+				frame && placeRegion(frame, refCap.clip, cloneCap.clip),
 			))
 				if (measured.get(id)?.status !== "missing") measured.set(id, c);
 		const anchors = new Map<string, StaggerAnchor>();
@@ -143,6 +157,7 @@ export async function verify(
 				advisory: advisoryReason(r),
 			});
 		}
+		flagExtraMotions(rows, specRows, idx);
 		for (const s of spec.still) rows.push(checkStill(s, idx));
 		const threshold = opts.pixelThreshold ?? DEFAULT_PIXEL_THRESHOLD;
 		pixel = video
@@ -172,6 +187,20 @@ export async function verify(
 	}
 	const checked = rows.filter((r) => r.advisory === null);
 	const passed = checked.filter((r) => r.pass).length;
+	// Still rows only say nothing moved; with no motion or look row checked, nothing was compared.
+	const checks =
+		checked.filter((r) => r.kind === "motion").length +
+		(look?.rows.length ?? 0);
+	const allPass =
+		passed === checked.length && (pixel?.pass ?? false) && (look?.pass ?? true);
+	const status: VerdictStatus =
+		errors.length > 0
+			? "setup-error"
+			: checks === 0
+				? "no-checks"
+				: allPass
+					? "pass"
+					: "fail";
 	const verdict = Verdict.parse({
 		version: VERDICT_VERSION,
 		referenceDir: ref,
@@ -184,6 +213,10 @@ export async function verify(
 		warnings: errors.length
 			? []
 			: await guardrails(clone, { reducedClone: opts.reducedClone }),
+		reducedMotion:
+			opts.reducedClone && errors.length === 0
+				? await checkReducedMotion(clone, opts.reducedClone)
+				: null,
 		coverage,
 		summary: {
 			rows: rows.length,
@@ -191,11 +224,8 @@ export async function verify(
 			failed: checked.length - passed,
 			advisory: rows.length - checked.length,
 		},
-		pass:
-			errors.length === 0 &&
-			passed === checked.length &&
-			(pixel?.pass ?? false) &&
-			(look?.pass ?? true),
+		pass: status === "pass",
+		status,
 	});
 	if (opts.outDir !== false)
 		await writeFile(join(opts.outDir ?? clone, "verdict.json"), json(verdict));

@@ -72,7 +72,8 @@ Drafts <captureDir>/spec.json from the capture and prints one line per row.
   --out <dir>             Where verdict.json, report.md, sheets/ go (default cloneDir)
   --json                  Print verdict JSON instead of the report
 
-Exit code: 0 all rows pass, 1 rows fail, 2 setup error or bad input.
+Exit code: 0 all rows pass, 1 rows fail, 2 setup error or bad input,
+3 no checks (no motion or look row was checked, so nothing was compared).
 `,
 	probe: `Usage: motionclone probe <video|gif>
 
@@ -91,9 +92,10 @@ Prints the verdict as markdown.
   --width <px>         Largest picture width (default 1280)
   --crop x,y,w,h       Crop of each input; repeat once per input, or once for all ("-" keeps a frame whole)
   --offset "0,120"     Per input, ms into that capture that lines up with t=0 of the others
+  --hold <ms>          Show the last frame this long before the loop restarts (default 0)
 
 Different frame sizes are scaled to a common height and padded.
-A verdict.json in a clone directory adds "PASS 4/4" or "FAIL 1/4" under its label.
+A verdict.json in a clone directory adds "PASS 4/4", "FAIL 1/4" or "NO CHECKS" under its label.
 GIF warns above 8 MB; MP4 is H.264 yuv420p.
 `,
 	sheet: `Usage: motionclone sheet <refDir> <cloneDir> --out <dir>

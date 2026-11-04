@@ -1,7 +1,7 @@
 import { curveSpanMs, easingLabel, unitCurve } from "../spec/easing.ts";
 import type { SpecRow } from "../spec/schema.ts";
 import type { CloneMotion } from "./clone.ts";
-import { rowLabel } from "./messages.ts";
+import { movement, rowLabel } from "./messages.ts";
 import type { Metric } from "./schema.ts";
 
 type Moving = Extract<CloneMotion, { status: "moving" }>;
@@ -49,4 +49,4 @@ export function curveMetric(
 const num = (v: number) => Number(v.toFixed(3));
 
 export const curveMessage = (row: SpecRow, m: Metric, atMs: number) =>
-	`${rowLabel(row)} is ${num(m.got ?? 0)} off the spec curve at ${Math.round(atMs)} ms (want at most ${num(m.tol ?? 0)}): build ${num(row.from)} -> ${num(row.to)} from ${Math.round(row.startMs)} ms over ${Math.round(row.durationMs)} ms, ${easingLabel(row.easing)}`;
+	`${rowLabel(row)} is ${num(m.got ?? 0)} off the spec curve at ${Math.round(atMs)} ms (want at most ${num(m.tol ?? 0)}): build ${movement(row.from, row.to)} from ${Math.round(row.startMs)} ms over ${Math.round(row.durationMs)} ms, ${easingLabel(row.easing)}`;

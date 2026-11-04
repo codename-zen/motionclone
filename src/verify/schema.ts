@@ -70,15 +70,19 @@ export const StructureFrame = z.object({
 	frame: z.number().int(),
 	t: z.number(),
 	ssim: z.number(),
+	/** Text score: how alike the reference's text lines sit in both frames, null without text bands or in older verdicts. */
+	text: z.number().nullable().default(null),
 	pass: z.boolean(),
 });
 
-/** SSIM of blurred grayscale rest frames: layout and proportions, not words or images. */
+/** SSIM of blurred grayscale rest frames (layout and proportions, not words or images) and the text score (type size and line placement). */
 export const StructureResult = z.object({
 	blurPx: z.number(),
 	threshold: z.number(),
+	textThreshold: z.number().nullable().default(null),
 	frames: z.array(StructureFrame),
 	minSsim: z.number().nullable(),
+	minText: z.number().nullable().default(null),
 	pass: z.boolean(),
 });
 
@@ -100,6 +104,18 @@ export const LookResult = z.object({
 export const Guardrail = z.object({
 	rule: z.enum(["layout-property", "ease-in-entrance", "reduced-motion"]),
 	target: z.string(),
+	message: z.string(),
+});
+
+/** The clone against its capture with prefers-reduced-motion: reduce (`--reduced-clone`). */
+export const ReducedMotion = z.object({
+	dir: z.string(),
+	/** Null when the check could not run; `message` says why. */
+	pass: z.boolean().nullable(),
+	/** Moving properties of the clone that keep at least half their travel with reduced motion. */
+	unchanged: z.array(z.string()),
+	/** Every property that still moves in the reduced capture, with its values and start. */
+	moved: z.array(z.string()),
 	message: z.string(),
 });
 
@@ -146,6 +162,8 @@ export const Verdict = z.object({
 	/** Look rows and the structure score; null for motion fidelity and in older verdicts. */
 	look: LookResult.nullable().default(null),
 	warnings: z.array(Guardrail),
+	/** The reduced-motion check; null without `--reduced-clone` and in older verdicts. It never fails the verdict. */
+	reducedMotion: ReducedMotion.nullable().default(null),
 	/** Null when setup errors stopped the comparison. */
 	coverage: Coverage.nullable().default(null),
 	/** `passed` and `failed` count checked rows; `advisory` rows are reported apart and never fail. */
@@ -156,6 +174,8 @@ export const Verdict = z.object({
 		advisory: z.number().int().default(0),
 	}),
 	pass: z.boolean(),
+	/** `no-checks` when no motion or look row was checked: nothing was compared, so it is not a pass. Absent in older verdicts. */
+	status: z.enum(["pass", "fail", "no-checks", "setup-error"]).optional(),
 });
 
 export type Metric = z.output<typeof Metric>;
@@ -163,6 +183,7 @@ export type RowVerdict = z.output<typeof RowVerdict>;
 export type PixelFrame = z.output<typeof PixelFrame>;
 export type PixelResult = z.output<typeof PixelResult>;
 export type Guardrail = z.output<typeof Guardrail>;
+export type ReducedMotion = z.output<typeof ReducedMotion>;
 export type LookRowVerdict = z.output<typeof LookRowVerdict>;
 export type StructureFrame = z.output<typeof StructureFrame>;
 export type StructureResult = z.output<typeof StructureResult>;
@@ -170,3 +191,13 @@ export type LookResult = z.output<typeof LookResult>;
 export type CoverageWarning = z.output<typeof CoverageWarning>;
 export type Coverage = z.output<typeof Coverage>;
 export type Verdict = z.output<typeof Verdict>;
+export type VerdictStatus = NonNullable<Verdict["status"]>;
+
+/** The verdict's status; older verdicts without one get it from `pass` and their setup errors. */
+export const statusOf = (v: {
+	pass: boolean;
+	setupErrors?: string[];
+	status?: VerdictStatus;
+}): VerdictStatus =>
+	v.status ??
+	((v.setupErrors?.length ?? 0) > 0 ? "setup-error" : v.pass ? "pass" : "fail");

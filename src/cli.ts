@@ -155,6 +155,7 @@ async function sideBySideCmd(args: string[]): Promise<number> {
 		width: num("width", v.width),
 		crop: v.crop,
 		offset: v.offset?.split(",").map((s) => num("offset", s) as number),
+		hold: num("hold", v.hold),
 	});
 	for (const line of lines) out(line);
 	return 0;

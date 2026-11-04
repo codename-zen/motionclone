@@ -1,11 +1,11 @@
 import { existsSync, statSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import { renderReport, verdictLabel } from "../report/report.ts";
+import { NO_CHECKS, renderReport, verdictLabel } from "../report/report.ts";
 import { type SheetInfo, writeSheets } from "../report/sheet.ts";
 import { SpecFile } from "../spec/schema.ts";
 import { type VerifyOptions, verify } from "../verify/index.ts";
-import type { Verdict } from "../verify/schema.ts";
+import { statusOf, type Verdict } from "../verify/schema.ts";
 import { UsageError } from "./capture-args.ts";
 
 export interface VerifyArgs {
@@ -24,8 +24,8 @@ export interface VerifyRun {
 	verdictPath: string;
 	reportPath: string;
 	sheets: SheetInfo[];
-	/** 0 all pass, 1 rows fail, 2 setup error. */
-	exitCode: 0 | 1 | 2;
+	/** 0 all pass, 1 rows fail, 2 setup error, 3 no checks. */
+	exitCode: 0 | 1 | 2 | 3;
 }
 
 async function readSpec(path: string): Promise<SpecFile> {
@@ -37,6 +37,13 @@ async function readSpec(path: string): Promise<SpecFile> {
 		);
 	}
 }
+
+const EXIT_CODES = {
+	pass: 0,
+	fail: 1,
+	"setup-error": 2,
+	"no-checks": 3,
+} as const;
 
 /** Run verify and write verdict.json, report.md and sheets for failing rows. */
 export async function runVerify(a: VerifyArgs): Promise<VerifyRun> {
@@ -80,7 +87,7 @@ export async function runVerify(a: VerifyArgs): Promise<VerifyRun> {
 		verdictPath: join(outDir, "verdict.json"),
 		reportPath,
 		sheets,
-		exitCode: verdict.setupErrors.length > 0 ? 2 : verdict.pass ? 0 : 1,
+		exitCode: EXIT_CODES[statusOf(verdict)],
 	};
 }
 
@@ -97,7 +104,7 @@ export function summarize(run: VerifyRun): string {
 	const { verdict: v } = run;
 	const checked = v.summary.rows - v.summary.advisory;
 	const head = `${verdictLabel(v)}: ${v.summary.passed}/${checked} rows pass (fidelity ${v.fidelity})`;
-	const lines = [head];
+	const lines = statusOf(v) === "no-checks" ? [head, NO_CHECKS] : [head];
 	for (const e of v.setupErrors) lines.push(`setup error: ${e}`);
 	for (const r of v.rows) {
 		if (r.pass) continue;
@@ -112,7 +119,9 @@ export function summarize(run: VerifyRun): string {
 		lines.push(
 			`- rest frames: mean mismatch ${((p.meanMismatch ?? 0) * 100).toFixed(2)} % over limit ${(p.threshold * 100).toFixed(1)} %`,
 		);
-	for (const w of v.warnings) lines.push(`warning: ${w.message}`);
+	if (v.reducedMotion) lines.push(v.reducedMotion.message);
+	for (const w of v.warnings)
+		if (w.rule !== "reduced-motion") lines.push(`warning: ${w.message}`);
 	for (const w of v.coverage?.warnings ?? [])
 		lines.push(`coverage: ${w.message}`);
 	return [...lines, ...pathLines(run)].join("\n");

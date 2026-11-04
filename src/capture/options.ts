@@ -63,6 +63,18 @@ export const CaptureOptions = z.object({
 	storageState: z.string().optional(),
 	cdpUrl: z.string().optional(),
 	seed: z.number().int().default(1),
+	/** Set by --like on a video capture: the recording's geometry the viewport and scale were derived from. */
+	likeVideo: z
+		.object({
+			capture: z.string(),
+			crop: z.object({ w: z.number(), h: z.number() }),
+			cssScale: z.number(),
+			scale: z.number(),
+			frameSize: z.object({ width: z.number(), height: z.number() }),
+			viewport: z.object({ width: z.number(), height: z.number() }),
+			deviceScaleFactor: z.number(),
+		})
+		.optional(),
 });
 
 export type CaptureInput = z.input<typeof CaptureOptions>;

@@ -1,6 +1,8 @@
+import { isSwitch } from "../spec/progress-row.ts";
 import { PROGRESS, type SpecRow, type StillEntry } from "../spec/schema.ts";
 import type { CloneIndex, CloneMotion } from "./clone.ts";
 import { curveMessage, curveMetric } from "./curve.ts";
+import { distanceCheck } from "./distance.ts";
 import {
 	type Evidence,
 	evidenceMessage,
@@ -10,13 +12,13 @@ import {
 } from "./evidence.ts";
 import {
 	directionMessage,
-	distanceMessage,
 	missingMessage,
+	movement,
 	overshootMessage,
 	staticMessage,
 	timingMessage,
-	unitOf,
 } from "./messages.ts";
+import { countMessage } from "./motion-count.ts";
 import type { Metric, RowVerdict } from "./schema.ts";
 import {
 	checkTimingAndEasing,
@@ -26,6 +28,7 @@ import {
 	startFocus,
 } from "./timing.ts";
 
+export { isScale, logRatio } from "./distance.ts";
 export type { StaggerAnchor } from "./timing.ts";
 
 type Moving = Extract<CloneMotion, { status: "moving" }>;
@@ -62,12 +65,6 @@ function unseenStartMetric(
 		pass: late <= tol,
 	};
 }
-
-export const isScale = (p: string) =>
-	p === "scale" || p === "scaleX" || p === "scaleY";
-
-export const logRatio = (from: number, to: number) =>
-	from > 0 && to > 0 ? Math.abs(Math.log(to / from)) : Math.abs(to - from);
 
 function verdictOf(
 	row: { id: string; selector: string; index: number },
@@ -108,7 +105,9 @@ export function checkMotionRow(
 		const failure =
 			c.status === "missing"
 				? missingMessage(row.selector, row.index, c.matched)
-				: staticMessage(row, c.standIns);
+				: c.count
+					? countMessage(row, c.count.got, c.count.want)
+					: staticMessage(row, c.standIns);
 		const present: Metric = {
 			want: 1,
 			got: 0,
@@ -154,7 +153,7 @@ export function checkMotionRow(
 			failures,
 			focus,
 		});
-		if (row.property === PROGRESS) {
+		if (row.property === PROGRESS && !isSwitch(row)) {
 			const { metric: curve, atMs } = curveMetric(row, c, frameMs);
 			metrics.curve = curve;
 			// A timing failure already says what is off; the curve only adds when timing alone passes.
@@ -196,30 +195,11 @@ export function checkMotionRow(
 		}
 	}
 
-	const relative = row.relativeDistance !== null && w.relative !== null;
-	// A scale is compared as a ratio: 1 -> 1.6 and 0.624 -> 1 are the same growth seen from different ends.
-	const ratio = isScale(row.property) && !relative;
-	const wantDist = ratio
-		? logRatio(row.from, row.to)
-		: relative
-			? (row.relativeDistance as number)
-			: Math.abs(row.to - row.from);
-	const gotDist = ratio
-		? logRatio(w.from, w.to)
-		: relative
-			? (w.relative as number)
-			: Math.abs(w.change);
-	if (!partial && wantDist > 0) {
-		const distance = metric(
-			wantDist,
-			gotDist,
-			gotDist / wantDist - 1,
-			tol.distance,
-			relative ? "of size" : unitOf(row.property).trim(),
-		);
-		metrics.distance = distance;
-		if (!distance.pass && metrics.direction?.pass !== false) {
-			failures.push(distanceMessage(row, c, distance));
+	const distance = partial ? null : distanceCheck(row, c);
+	if (distance) {
+		metrics.distance = distance.metric;
+		if (distance.failure && metrics.direction?.pass !== false) {
+			failures.push(distance.failure);
 			focus.push(end);
 		}
 	}
@@ -230,7 +210,11 @@ export function checkMotionRow(
 		metrics,
 		failures,
 		focus.length ? focus : span,
-		[...(partial ? [PARTIAL_NOTE] : []), ...(c.notes ?? [])],
+		[
+			...(partial ? [PARTIAL_NOTE] : []),
+			...(distance?.note ? [distance.note] : []),
+			...(c.notes ?? []),
+		],
 	);
 }
 
@@ -273,7 +257,7 @@ export function checkStill(entry: StillEntry, idx: CloneIndex): RowVerdict {
 				`${entry.id} should stay still but moves: ${moving
 					.map(
 						(m) =>
-							`${m.property} ${Number(m.window.from.toFixed(3))} -> ${Number(m.window.to.toFixed(3))} from ${Math.round(m.window.startMs)} ms`,
+							`${m.property} ${movement(m.window.from, m.window.to)} from ${Math.round(m.window.startMs)} ms`,
 					)
 					.join(", ")}; remove that animation`,
 			]

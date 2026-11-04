@@ -10,7 +10,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PNG } from "pngjs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { restFramesOf } from "../src/look/rest.ts";
 import { designSheet } from "../src/media/design-sheet.ts";
+import { differenceImage } from "../src/media/image.ts";
 import { sideBySide } from "../src/media/side-by-side.ts";
 import { runFfmpegOrThrow, scanFrames } from "../src/video/ffmpeg.ts";
 import { probeVideo } from "../src/video/probe.ts";
@@ -170,19 +172,31 @@ describe("sideBySide", () => {
 			sideBySide({ dirs: [ref, join(root, "none")], out: join(root, "x.gif") }),
 		).rejects.toThrow("capture.json");
 	});
+
+	it("holds the last frame before the loop restarts", async () => {
+		const ref = await fakeCapture("href", 40, 40, 10, (k) => 40 + k * 10);
+		const out = join(root, "hold.gif");
+		const r = await sideBySide({ dirs: [ref, ref], out, fps: 10, holdMs: 500 });
+		expect(r.frames).toBe(15);
+		expect((await scanFrames(out)).frames).toHaveLength(15);
+	}, 60_000);
 });
 
 describe("designSheet", () => {
-	it("shows reference, clone and difference for first, plateau and last frames", async () => {
-		const shape: Gray = (k) => (k < 3 ? 20 : k < 6 ? 20 + (k - 2) * 40 : 200);
-		const ref = await fakeCapture("sref", 200, 100, 10, shape);
-		const clone = await fakeCapture("sclone", 200, 100, 10, (k) =>
-			k === 9 ? 90 : shape(k),
+	it("shows reference, clone and difference at the rest states look.json measures", async () => {
+		const shape: Gray = (k) =>
+			k < 3 ? 20 : k < 6 ? 20 + (k - 2) * 40 : k < 9 ? 200 : 120;
+		const ref = await fakeCapture("sref", 200, 100, 11, shape);
+		const clone = await fakeCapture("sclone", 200, 100, 11, (k) =>
+			k >= 9 ? 90 : shape(k),
 		);
 		const r = await designSheet(ref, clone, join(root, "sheet"));
-		expect(r.moments.map((m) => m.refFrame)).toEqual([0, 6, 9]);
-		expect(r.moments[0]?.label).toBe("first frame 0 ms");
-		expect(r.moments[2]?.label).toBe("last frame 900 ms");
+		const rest = await restFramesOf(ref, 11, 100);
+		expect(r.moments.map((m) => m.refFrame)).toEqual(rest.map((f) => f.frame));
+		expect(r.moments.map((m) => m.refFrame)).toEqual([1, 7, 10]);
+		expect(r.moments[0]?.label).toBe("first rest 100 ms");
+		expect(r.moments[1]?.label).toBe("rest 700 ms");
+		expect(r.moments[2]?.label).toBe("last frame 1000 ms");
 		const sheet = PNG.sync.read(await readFile(r.png));
 		const tileH = 100;
 		const rowH = 20 + tileH + 8;
@@ -205,5 +219,35 @@ describe("designSheet", () => {
 		expect(strongDiff(0)).toBe(0);
 		expect(strongDiff(1)).toBe(0);
 		expect(strongDiff(2)).toBeGreaterThan(1000);
+	});
+
+	it("shows an empty, black difference when a capture is compared with itself", async () => {
+		const ref = await fakeCapture("sself", 200, 100, 6, (k) => 30 + k * 30);
+		const r = await designSheet(ref, ref, join(root, "self-sheet"));
+		const sheet = PNG.sync.read(await readFile(r.png));
+		const diffX = 8 + 2 * 208;
+		const tileH = 100;
+		const rowH = 20 + tileH + 8;
+		for (const row of r.moments.keys()) {
+			const top = 8 + 20 + row * rowH + 20;
+			const notBlack = (y1: number) =>
+				count(sheet, diffX, diffX + 200, y1, (r, g, b) => r + g + b > 0);
+			expect(notBlack(top + tileH) - notBlack(top)).toBe(0);
+		}
+	});
+});
+
+describe("differenceImage", () => {
+	it("is black where frames match and red where they differ, as both sheets draw it", () => {
+		const a = new PNG({ width: 20, height: 10 });
+		for (let i = 0; i < a.data.length; i += 4)
+			a.data.set([(i / 4) % 255, 120, 200, 255], i);
+		const b = PNG.sync.read(PNG.sync.write(a));
+		b.data.set([255, 255, 255, 255], 0);
+		const same = differenceImage(a, a);
+		expect([...same.data].filter((v, i) => i % 4 !== 3 && v !== 0)).toEqual([]);
+		const diff = differenceImage(a, b);
+		expect([...diff.data.subarray(0, 4)]).toEqual([255, 0, 0, 255]);
+		expect([...diff.data.subarray(4, 8)]).toEqual([0, 0, 0, 255]);
 	});
 });

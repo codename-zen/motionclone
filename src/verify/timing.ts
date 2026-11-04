@@ -1,4 +1,5 @@
 import { curveDeviation } from "../spec/deviation.ts";
+import { isSwitch } from "../spec/progress-row.ts";
 import type { SpecRow } from "../spec/schema.ts";
 import type { CloneMotion } from "./clone.ts";
 import { easingMessage, staggerMessage, timingMessage } from "./messages.ts";
@@ -82,6 +83,8 @@ export function checkTimingAndEasing(
 	if (!endM.pass && start.pass && duration.pass)
 		failures.push(timingMessage(row, "end", endM));
 	if (!duration.pass || (!endM.pass && start.pass)) focus.push(end, gotEnd);
+	// A switch has no shape between its two frames; its duration says whether the clone fades instead.
+	if (isSwitch(row)) return;
 
 	const dev = curveDeviation(c.fit.samples, c.fit.hint, row.easing);
 	// The clone cannot be held closer to the spec curve than the reference itself is.

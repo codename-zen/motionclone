@@ -1,3 +1,4 @@
+import pixelmatch from "pixelmatch";
 import { PNG } from "pngjs";
 
 export interface Rect {
@@ -95,4 +96,14 @@ export function fitInto(
 		Math.floor((height - h) / 2),
 	);
 	return out;
+}
+
+/** Differing pixels in red on black; identical images give an empty black image, not a faded copy. */
+export function differenceImage(a: PNG, b: PNG): PNG {
+	const diff = blank(a.width, a.height, [0, 0, 0]);
+	pixelmatch(a.data, b.data, diff.data, a.width, a.height, {
+		threshold: 0.1,
+		diffMask: true,
+	});
+	return diff;
 }

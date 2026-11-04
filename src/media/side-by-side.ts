@@ -36,6 +36,8 @@ export interface SideBySideOptions {
 	crop?: string[];
 	/** Per input: ms into that capture that lines up with the others' t=0. */
 	offsets?: number[];
+	/** Shows the last frame this long before the loop restarts. */
+	holdMs?: number;
 }
 
 export interface SideBySideResult {
@@ -182,7 +184,8 @@ export async function sideBySide(
 		o.fps ?? Math.min(30, Math.round(1000 / (clips[0] as Clip).frameMs));
 	const step = 1000 / fps;
 	const count = Math.floor((to - from) / step + 1e-9) + 1;
-	if (count > MAX_FRAMES)
+	const hold = Math.max(0, Math.round((o.holdMs ?? 0) / step));
+	if (count + hold > MAX_FRAMES)
 		throw new Error(
 			`${count} frames is too many (limit ${MAX_FRAMES}); narrow --from/--to or lower --fps`,
 		);
@@ -217,10 +220,14 @@ export async function sideBySide(
 					l.header,
 				);
 			}
-			await writeFile(
-				join(tmp, `${String(k).padStart(5, "0")}.png`),
-				PNG.sync.write(canvas),
-			);
+			const png = PNG.sync.write(canvas);
+			await writeFile(join(tmp, `${String(k).padStart(5, "0")}.png`), png);
+			if (k === count - 1)
+				for (let h = 1; h <= hold; h++)
+					await writeFile(
+						join(tmp, `${String(k + h).padStart(5, "0")}.png`),
+						png,
+					);
 		}
 		const out = resolve(o.out);
 		await mkdir(dirname(out), { recursive: true });
@@ -231,7 +238,7 @@ export async function sideBySide(
 			);
 		return {
 			out,
-			frames: count,
+			frames: count + hold,
 			width: l.width,
 			height: l.height,
 			fps,

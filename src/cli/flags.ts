@@ -50,6 +50,7 @@ export const SIDE_BY_SIDE_FLAGS = {
 	width: { type: "string" },
 	crop: { type: "string", multiple: true },
 	offset: { type: "string" },
+	hold: { type: "string" },
 } as const;
 
 export const num = (

@@ -2,6 +2,7 @@ import type { ClipRect } from "../capture/options.ts";
 import type { TrackedElement } from "../capture/types.ts";
 import type { Track } from "../measure/elements.ts";
 import { blurPx } from "../measure/style.ts";
+import { FRAME } from "../pixel/region.ts";
 import { elementKey } from "../spec/motion.ts";
 import { readPng } from "./pixels.ts";
 
@@ -117,6 +118,8 @@ export async function pixelActivity(input: ActivityInput): Promise<Activity> {
 		const after = elementsOf(track, i);
 		const keys = [...new Set([...before.keys(), ...after.keys()])];
 		const why = explained(i);
+		// A frame row checks the background around every element while it runs.
+		const frameExplained = why.has(elementKey(FRAME, 0));
 		const mask = new Uint8Array(width * height);
 		const owners: { key: string; r: Rect; hits: number }[] = [];
 		for (const key of keys) {
@@ -163,7 +166,7 @@ export async function pixelActivity(input: ActivityInput): Promise<Activity> {
 						q.hits++;
 						owned = true;
 					}
-				if (owned) continue;
+				if (owned || frameExplained) continue;
 				free++;
 				box = box
 					? {

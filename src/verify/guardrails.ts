@@ -7,6 +7,7 @@ import {
 } from "../spec/capture-file.ts";
 import { candidateEasing, unitCurve } from "../spec/easing.ts";
 import { elementKey, fitMotion, motionProperties } from "../spec/motion.ts";
+import { checkReducedMotion } from "./reduced-motion.ts";
 import type { Guardrail } from "./schema.ts";
 
 const LAYOUT =
@@ -95,30 +96,16 @@ function easeInWarnings(motions: MovingProperty[]): Guardrail[] {
 }
 
 async function reducedMotionWarnings(
-	motions: MovingProperty[],
+	cloneDir: string,
 	reducedDir: string,
 ): Promise<Guardrail[]> {
-	const reduced = new Map(
-		motionProperties(await readTrack(reducedDir)).map((m) => [
-			`${elementKey(m.selector, m.index)}.${m.property}`,
-			m,
-		]),
-	);
-	const unchanged = motions.filter((m) => {
-		if (m.property === "opacity") return false;
-		const r = reduced.get(`${elementKey(m.selector, m.index)}.${m.property}`);
-		const size = (w: MovingProperty["window"]) =>
-			Math.abs(w.thereAndBack ? w.peak - w.from : w.change);
-		return r !== undefined && size(r.window) >= 0.5 * size(m.window);
-	});
-	if (unchanged.length === 0) return [];
+	const check = await checkReducedMotion(cloneDir, reducedDir);
+	if (check.pass !== false) return [];
 	return [
 		{
 			rule: "reduced-motion",
-			target: unchanged
-				.map((m) => `${elementKey(m.selector, m.index)}.${m.property}`)
-				.join(", "),
-			message: `motion is unchanged with prefers-reduced-motion: reduce (${unchanged.length} moving properties, e.g. ${elementKey(unchanged[0]?.selector ?? "", unchanged[0]?.index ?? 0)} ${unchanged[0]?.property}); add a @media (prefers-reduced-motion: reduce) rule that removes or shortens the movement`,
+			target: check.unchanged.join(", "),
+			message: check.message,
 		},
 	];
 }
@@ -143,6 +130,8 @@ export async function guardrails(
 			cap.options.trigger.type === "scroll",
 		),
 		...easeInWarnings(motions),
-		...(reducedClone ? await reducedMotionWarnings(motions, reducedClone) : []),
+		...(reducedClone
+			? await reducedMotionWarnings(cloneDir, reducedClone)
+			: []),
 	];
 }

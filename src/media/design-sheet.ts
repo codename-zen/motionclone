@@ -1,11 +1,10 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import pixelmatch from "pixelmatch";
 import { PNG } from "pngjs";
+import { type RestFrame, restFramesOf } from "../look/rest.ts";
 import { drawText, GLYPH_HEIGHT, textWidth } from "../report/font.ts";
 import { FrameReader, frameAt, frameTime, readClip } from "./clip.ts";
-import { blank, fitInto, type Rgb } from "./image.ts";
-import { restFrames } from "./rest-frames.ts";
+import { blank, differenceImage, fitInto, type Rgb } from "./image.ts";
 
 export interface DesignSheetResult {
 	png: string;
@@ -22,7 +21,13 @@ const LINE = GLYPH_HEIGHT * SCALE + 6;
 const MAX_TILE_WIDTH = 560;
 const TITLES = ["Reference", "Clone", "Difference"] as const;
 
-/** Reference | clone | difference at the first frame, the last frame and each still stretch, in one PNG. */
+const KIND: Record<RestFrame["label"], string> = {
+	first: "first rest",
+	plateau: "rest",
+	last: "last frame",
+};
+
+/** Reference | clone | difference at each rest state look.json measures (src/look/rest.ts) and the last frame, in one PNG. */
 export async function designSheet(
 	refDir: string,
 	cloneDir: string,
@@ -34,7 +39,7 @@ export async function designSheet(
 	]);
 	const refs = new FrameReader(ref);
 	const clones = new FrameReader(clone);
-	const picks = await restFrames(ref);
+	const picks = await restFramesOf(ref.dir, ref.frames, ref.frameMs);
 	const first = await refs.read(0);
 	const tileW = Math.min(first.width, MAX_TILE_WIDTH);
 	const tileH = Math.max(1, Math.round((first.height * tileW) / first.width));
@@ -46,20 +51,14 @@ export async function designSheet(
 		drawText(sheet, title, GUTTER + col * (tileW + GUTTER), GUTTER, INK, s);
 	}
 	const moments: DesignSheetResult["moments"] = [];
-	for (const [row, refFrame] of picks.entries()) {
+	for (const [row, pick] of picks.entries()) {
+		const refFrame = pick.frame;
 		const t = frameTime(ref, refFrame);
 		const cloneFrame = frameAt(clone, t);
 		const a = fitInto(await refs.read(refFrame), tileW, tileH, PANEL);
 		const b = fitInto(await clones.read(cloneFrame), tileW, tileH, PANEL);
-		const diff = new PNG({ width: tileW, height: tileH });
-		pixelmatch(a.data, b.data, diff.data, tileW, tileH, { threshold: 0.1 });
-		const kind =
-			refFrame === 0
-				? "first frame"
-				: refFrame === ref.frames - 1
-					? "last frame"
-					: "rest";
-		const label = `${kind} ${Math.round(t)} ms`;
+		const diff = differenceImage(a, b);
+		const label = `${KIND[pick.label]} ${Math.round(t)} ms`;
 		const y0 = GUTTER + LINE + row * rowH;
 		drawText(sheet, label, GUTTER, y0, MUTED, SCALE);
 		for (const [col, img] of [a, b, diff].entries())

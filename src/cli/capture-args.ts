@@ -1,8 +1,9 @@
 import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { z } from "zod";
 import { type CaptureInput, captureMotion } from "../capture/index.ts";
 import type { CaptureSummary } from "../capture/types.ts";
-import { readCaptureFile } from "../spec/capture-file.ts";
+import { type CaptureFile, readCaptureFile } from "../spec/capture-file.ts";
 import { isVideoCapture } from "../verify/setup.ts";
 
 export class UsageError extends Error {}
@@ -15,7 +16,7 @@ export const CaptureArgs = z.object({
 		.string()
 		.optional()
 		.describe(
-			"Reference capture directory: reuse all its options except url and out",
+			"Reference capture directory: reuse all its options except url and out; for a video capture, its fps, duration and screen size",
 		),
 	viewport: z.string().optional().describe("WIDTHxHEIGHT, default 1280x800"),
 	fps: z.number().optional().describe("Frames per second, default 60"),
@@ -162,25 +163,56 @@ const defined = <T extends object>(o: T): Partial<T> =>
 		Object.entries(o).filter(([, v]) => v !== undefined),
 	) as Partial<T>;
 
+interface VideoSection {
+	crop: { w: number; h: number };
+	scale: number;
+	cssScale: number;
+	frameSize: { width: number; height: number };
+}
+
+/**
+ * The base for a clone of a recording: its fps and duration with a load trigger, and the screen it shows, so
+ * clone frames have the reference frames' pixel size: the crop in CSS pixels as the viewport, and video pixels
+ * per CSS pixel as the device scale factor.
+ */
+function likeVideo(dir: string, ref: CaptureFile): Partial<CaptureInput> {
+	const v = (ref as CaptureFile & { video: VideoSection }).video;
+	const viewport = {
+		width: Math.max(1, Math.round(v.crop.w / v.cssScale)),
+		height: Math.max(1, Math.round(v.crop.h / v.cssScale)),
+	};
+	const deviceScaleFactor = v.scale * v.cssScale;
+	return {
+		fps: ref.options.fps,
+		durationMs: ref.options.durationMs,
+		trigger: { type: "load" },
+		preRollMs: 0,
+		viewport,
+		deviceScaleFactor,
+		likeVideo: {
+			capture: resolve(dir),
+			crop: { w: v.crop.w, h: v.crop.h },
+			cssScale: v.cssScale,
+			scale: v.scale,
+			frameSize: v.frameSize,
+			viewport,
+			deviceScaleFactor,
+		},
+	};
+}
+
 /** CaptureOptions input from flat args; with `like`, the reference's options are the base. */
 export async function buildCaptureInput(a: CaptureArgs): Promise<CaptureInput> {
 	let base: Partial<CaptureInput> = {};
 	if (a.like) {
-		let ref: Awaited<ReturnType<typeof readCaptureFile>>;
+		let ref: CaptureFile;
 		try {
 			ref = await readCaptureFile(a.like);
 		} catch {
 			throw new UsageError(`--like: no capture.json in ${a.like}`);
 		}
-		// A recording has no page viewport, scale or seed: take what the clone must match.
-		base = isVideoCapture(ref)
-			? {
-					fps: ref.options.fps,
-					durationMs: ref.options.durationMs,
-					trigger: { type: "load" },
-					preRollMs: 0,
-				}
-			: { ...ref.options };
+		const { likeVideo: _, ...options } = ref.options;
+		base = isVideoCapture(ref) ? likeVideo(a.like, ref) : options;
 	}
 	let viewport: CaptureInput["viewport"];
 	if (a.viewport) {

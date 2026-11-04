@@ -1,4 +1,5 @@
 import { easingLabel, unitCurve } from "../spec/easing.ts";
+import { isSwitch } from "../spec/progress-row.ts";
 import { PROGRESS, type SpecRow } from "../spec/schema.ts";
 import type { CloneMotion } from "./clone.ts";
 import type { Metric } from "./schema.ts";
@@ -7,6 +8,15 @@ type Moving = Extract<CloneMotion, { status: "moving" }>;
 
 const ms = (v: number | null) => Math.round(v ?? 0);
 const num = (v: number) => Number(v.toFixed(Math.abs(v) >= 10 ? 1 : 3));
+
+/** "a -> b", with digits added until the two differ; a row that ends where it starts reads "away from a and back". */
+export function movement(from: number, to: number, unit = ""): string {
+	if (from === to) return `away from ${num(from)}${unit} and back`;
+	let digits = Math.abs(from) >= 10 || Math.abs(to) >= 10 ? 1 : 3;
+	const f = (v: number) => Number(v.toFixed(digits));
+	while (f(from) === f(to) && digits < 12) digits++;
+	return `${f(from)}${unit} -> ${f(to)}${unit}`;
+}
 
 export const rowLabel = (row: SpecRow) =>
 	`${row.selector}[${row.index}] ${row.property}`;
@@ -36,6 +46,8 @@ export function timingMessage(
 	m: Metric,
 ): string {
 	const d = ms(m.diff);
+	if (what === "duration" && isSwitch(row))
+		return `${rowLabel(row)} takes ${ms(m.got)} ms, want ${ms(m.want)} ms (a near-instant switch)`;
 	if (what === "duration")
 		return `${rowLabel(row)} runs ${Math.abs(d)} ms ${d > 0 ? "too long" : "too short"} (want ${ms(m.want)} ms, got ${ms(m.got)} ms)`;
 	const verb = what === "start" ? "starts" : "ends";
@@ -90,11 +102,11 @@ export function distanceMessage(row: SpecRow, c: Moving, m: Metric): string {
 }
 
 export const directionMessage = (row: SpecRow, c: Moving) =>
-	`${rowLabel(row)} moves the wrong way (want ${num(row.from)} -> ${num(row.to)}, got ${num(c.motion.window.from)} -> ${num(c.motion.window.to)})`;
+	`${rowLabel(row)} moves the wrong way (want ${movement(row.from, row.to)}, got ${movement(c.motion.window.from, c.motion.window.to)})`;
 
 export function staticMessage(row: SpecRow, standIns: string[]): string {
 	const unit = unitOf(row.property);
-	const want = `want ${num(row.from)}${unit} -> ${num(row.to)}${unit} from ${ms(row.startMs)} ms over ${ms(row.durationMs)} ms`;
+	const want = `want ${movement(row.from, row.to, unit)} from ${ms(row.startMs)} ms over ${ms(row.durationMs)} ms`;
 	const never = NEVER[row.property];
 	const head = never
 		? `${rowLabel(row)} missing: ${want}, the clone never ${never}`

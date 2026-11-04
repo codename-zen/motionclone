@@ -1,5 +1,10 @@
 import { readFile, writeFile } from "node:fs/promises";
-import { type Metric, type RowVerdict, Verdict } from "../verify/schema.ts";
+import {
+	type Metric,
+	type RowVerdict,
+	statusOf,
+	Verdict,
+} from "../verify/schema.ts";
 import { lookFixes, lookLines } from "./look.ts";
 
 const cell = (m: Metric | undefined, digits = 0): string => {
@@ -28,13 +33,23 @@ function rowLine(r: RowVerdict): string {
 	return `| ${escapeCell(r.id)} | ${result} | ${cell(m.start)} | ${cell(m.duration)} | ${cell(m.stagger)} | ${deviation(m.easing)} | ${cell(m.overshoot, 1)} | ${cell(m.distance, 3)} |`;
 }
 
-/** PASS or FAIL, with the advisory row and coverage warning counts so a PASS is never read as complete. */
+const STATUS_LABEL = {
+	pass: "PASS",
+	fail: "FAIL",
+	"no-checks": "NO CHECKS",
+	"setup-error": "FAIL",
+} as const;
+
+/** PASS, FAIL or NO CHECKS, with the advisory row and coverage warning counts so a PASS is never read as complete. */
 export function verdictLabel(v: Verdict): string {
 	const n = v.coverage?.warnings.length ?? 0;
 	const { rows, advisory } = v.summary;
-	const base = `${v.pass ? "PASS" : "FAIL"}${advisory ? ` (${rows - advisory} rows checked, ${advisory} advisory)` : ""}`;
+	const base = `${STATUS_LABEL[statusOf(v)]}${advisory ? ` (${rows - advisory} rows checked, ${advisory} advisory)` : ""}`;
 	return n ? `${base} with ${n} coverage warning${n === 1 ? "" : "s"}` : base;
 }
+
+export const NO_CHECKS =
+	"No motion or look row was checked, so nothing was compared: this is not a pass. Track the moving elements, record a longer clip, or use --fidelity look.";
 
 const TABLE = [
 	"| id | result | start | duration | stagger gap | easing | overshoot | distance |",
@@ -101,6 +116,7 @@ export function renderReport(v: Verdict): string {
 			? `${v.summary.passed} of ${v.summary.rows - v.summary.advisory} checked rows pass, ${v.summary.advisory} advisory. Fidelity: ${v.fidelity}.`
 			: `${v.summary.passed} of ${v.summary.rows} rows pass. Fidelity: ${v.fidelity}.`,
 	];
+	if (statusOf(v) === "no-checks") out.push("", NO_CHECKS);
 	if (v.setupErrors.length > 0) {
 		out.push(
 			...section(
@@ -138,10 +154,32 @@ export function renderReport(v: Verdict): string {
 					: `Mean mismatch ${((p.meanMismatch ?? 0) * 100).toFixed(2)} % (limit ${(p.threshold * 100).toFixed(1)} %, ${p.enforced ? "enforced" : "reported only"}), mean SSIM ${(p.meanSsim ?? 0).toFixed(4)} over frames ${p.frames.map((f) => f.frame).join(", ")}.`,
 			]),
 		);
+	const rm = v.reducedMotion;
+	if (rm)
+		out.push(
+			...section(
+				`Reduced motion: ${rm.pass === null ? "not checked" : rm.pass ? "pass" : "FAIL"}`,
+				[
+					rm.message,
+					...(rm.moved.length
+						? [
+								"",
+								"Still moving with reduced motion:",
+								...rm.moved.map((m) => `- ${m}`),
+							]
+						: []),
+				],
+				[
+					`Clone captured with prefers-reduced-motion: reduce: ${rm.dir}. This check is reported, it does not fail the verdict.`,
+				],
+			),
+		);
 	out.push(
 		...section(
 			"Warnings",
-			v.warnings.map((w) => `- ${w.message}`),
+			v.warnings
+				.filter((w) => w.rule !== "reduced-motion")
+				.map((w) => `- ${w.message}`),
 		),
 	);
 	const c = v.coverage;

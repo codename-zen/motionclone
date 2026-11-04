@@ -25,6 +25,11 @@ export const SideBySideArgs = z.object({
 		.array(z.number())
 		.optional()
 		.describe("Per input, ms into that capture that lines up with the others"),
+	hold: z
+		.number()
+		.nonnegative()
+		.optional()
+		.describe("Show the last frame this many ms before the loop restarts"),
 });
 export type SideBySideArgs = z.output<typeof SideBySideArgs>;
 
@@ -46,6 +51,7 @@ export async function sideBySideLines(a: SideBySideArgs): Promise<string[]> {
 		width: a.width,
 		crop: a.crop,
 		offsets: a.offset,
+		holdMs: a.hold,
 	});
 	return [
 		`wrote ${r.out}`,

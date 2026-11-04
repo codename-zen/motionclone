@@ -24,6 +24,8 @@ A selector that matches nothing is skipped with a warning.
 With the `load` trigger the page's own load animations have already started by then, so use `--trigger none` or `click` if the motion should start after the banner is gone.
 
 Recordings are repeatable: the page runs on a clock that motionclone moves forward frame by frame, so two recordings of the same page are identical.
+Text is drawn with grayscale antialiasing on every OS, so text colours measure the same on Windows, macOS and Linux.
+A Chrome you attach with `--cdp-url` keeps its own text settings.
 That is why motionclone refuses to compare two recordings made with different settings.
 
 ## Video and gif
@@ -38,6 +40,7 @@ motionclone capture loader.mov --out ref --start 0:03 --end 0:05 --crop 320,180,
   Draw the box around everywhere the element goes during the clip.
   `card[0]` and `card[1]` are measured as a group, like sibling elements on a page.
 - Without `--region`, motionclone looks for moving shapes by itself and names them `blob[0]`, `blob[1]` and so on.
+  A panel that slides past the edge of the screen is followed by the part that stays in view, and what it reveals or covers gets its own region.
 - `--css-scale 2` turns a recording of a 2x screen into CSS pixels.
 - Pick `--start` after any other content in the same spot has gone, so the region only shows the element you want.
 
@@ -47,6 +50,11 @@ To check your page against the video, record it with `--like` and tell `verify` 
 motionclone capture http://localhost:5173 --like ref --track ".card" --out mine
 motionclone verify ref mine --map card=.card
 ```
+
+`--like` on a video records your page at the size of the recorded screen.
+The viewport is the crop divided by `--css-scale`, and the page is drawn at that scale, so your frames have the same pixel size as the video frames.
+A 600x1032 crop with `--css-scale 1.5` gives a 400x688 viewport at 1.5x.
+`--viewport`, `--fps`, `--duration` and `--trigger` still override it.
 
 ## Side by side
 
@@ -63,7 +71,7 @@ motionclone side-by-side ref mine-a mine-b --out compare.mp4 --from 0 --to 2000 
 - `--from` and `--to` pick the range in ms, `--fps` the frame rate, `--width` the largest picture width (default 1280).
 - `--crop x,y,w,h` cuts every input the same way, or repeat it once per input.
   Use `-` to keep one input whole.
-- A `verdict.json` in a rebuild directory adds "PASS 4/4" in green or "FAIL 1/4" in red under its label.
+- A `verdict.json` in a rebuild directory adds "PASS 4/4" in green, "FAIL 1/4" in red or "NO CHECKS" in amber under its label.
   Run `verify` first.
 - A GIF over 8 MB prints a warning.
   Lower `--width` or `--fps`, cut the range, or write an `.mp4`.
@@ -75,7 +83,10 @@ motionclone side-by-side ref mine-a mine-b --out compare.mp4 --from 0 --to 2000 
 motionclone sheet ref mine --out design
 ```
 
-- Writes `design/design-sheet.png`: reference, rebuild and difference for the first frame, the last frame and each still stretch of the reference.
+- Writes `design/design-sheet.png`: reference, rebuild and difference at each rest state of the reference and at its last frame.
+  These are the same rest states `look.json` measures.
+- The difference shows only the pixels that differ, in red on black.
+  An empty black panel means the frames match.
 - Use it to compare layout, colours and type sizes before you work on motion.
 - It works for page and video references.
   The rebuild is scaled to the size of the reference.
@@ -86,8 +97,12 @@ motionclone sheet ref mine --out design
 - `verdict.json`: every row with its numbers.
 - `report.md`: the same as text, with a list of fixes.
 - `sheets/`: images for each failing row, with the reference, your version and the difference side by side, and the time of each row.
+  The difference shows only differing pixels, in red on black.
 
-Exit codes: 0 when every row passes, 1 when rows fail, 2 when the recordings cannot be compared (different settings, missing files).
+Exit codes: 0 when every row passes, 1 when rows fail, 2 when the recordings cannot be compared (different settings, missing files), 3 when nothing was checked.
+"NO CHECKS" means no motion or look row was checked, for example when every row is advisory.
+It is not a pass.
+Track the moving elements, record a longer clip, or add `--fidelity look`.
 
 The report also has these sections:
 
@@ -99,13 +114,33 @@ The report also has these sections:
 - **Advisory**: rows with weak evidence.
   They are shown with their numbers but never fail the result.
 
+An element that moves the same way several times, with pauses of at least 250 ms between, gets one row per motion: `.sheet[0].translateY`, `.sheet[0].translateY#2` and so on.
+Your version must make the same number of motions; row #2 is checked against your second one.
+
+`spec.json` lists motions it left out under `dropped`, each with a reason.
+A fit that starts before the clip, ends after it or runs longer than it is not a row.
+Neither is a row that ends where it starts, such as an element the tracker lost for a frame.
+
 With `--fidelity look`, verify also checks the design: page and region backgrounds, text and accent colours, type sizes, radii and the position of large blocks, plus a structure score on blurred still frames.
 Different words or images are fine; different colours, sizes or layout are not.
+From a video, type sizes are cap heights of the text lines, in CSS px: up to three sizes for the screen and for each region.
+Your version is measured from its pixels the same way, line by line in the same places.
+The structure score also has a text score: where the ink of each text line of the reference sits, row by row.
+Other words of the same size keep it near 1; smaller or moved text lowers it.
 The **Look** section names each value that is off and the value to use.
 
 `progress` rows check how an element's look changes, such as a fade, a dim or a cross-fade.
 They are measured from pixels in the element's box, in the reference and in your version the same way.
 Their timing must match within one frame plus 20 ms, and their curve is also compared on the same clock.
+A change done within two frames is a switch: its row has `steps(1, end)` easing and lasts one frame.
+A version that fades instead fails with, for example, "frame[0] progress takes 260 ms, want 18 ms (a near-instant switch)".
+`frame[0]` rows measure the whole screen without the boxes of tracked elements that move.
+They catch a background that flips behind a sliding sheet: only the pixels that switch colour together are read.
+Each change gets its own row: `frame[0].progress`, `frame[0].progress#2` and so on.
+
+`--reduced-clone <dir>` compares your version with a recording of it made with `--reduced-motion`.
+The report has a **Reduced motion** section: pass, fail with the properties that still move, or why it could not run.
+It does not fail the result.
 
 ## Default tolerances
 
@@ -120,14 +155,18 @@ Their timing must match within one frame plus 20 ms, and their curve is also com
 | Size (look)                    | ±8 %                  |
 | Block position (look)          | ±3 % of the screen    |
 | Structure (look)               | blurred SSIM 0.9      |
+| Text score (look)              | 0.9                   |
 
 ## Limits
 
 - From video, motionclone measures position, uniform scale, blur and opacity.
-  Rotation and colour changes in a video are not measured.
+  Rotation is not measured.
+  Colour changes are measured as progress rows: fades and switches of a region or of the background.
 - When an element is invisible at the start of its motion, its start value and exact easing are a best guess; only the visible part is checked.
 - Rows with weak evidence (few clear frames, a loose fit) are advisory and never fail.
 - From a video, an opacity row that the pixels contradict drops to medium or low confidence; its notes give both numbers.
+- When a video region cuts off its element during a move, the row's distance is a lower bound (`distanceObserved: "lower-bound"`).
+  A rebuild that moves further passes; the report says so in a note.
 - Progress rows only cover changes that mix the frames before and after, like fades and cross-fades.
   A change that moves or scales content gets no progress row.
 - From a page, progress rows appear only for changes no other row explains, such as a canvas cover fading inside a tracked card.

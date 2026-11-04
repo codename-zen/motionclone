@@ -1,8 +1,8 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import pixelmatch from "pixelmatch";
 import { PNG } from "pngjs";
 import { readTrack, type Track } from "../measure/elements.ts";
+import { differenceImage } from "../media/image.ts";
 import { readCaptureFile } from "../spec/capture-file.ts";
 import { readPng } from "../verify/pixels.ts";
 import type { RowVerdict, Verdict } from "../verify/schema.ts";
@@ -180,10 +180,7 @@ async function writeSheet(
 	for (const [line, frame] of frames.entries()) {
 		const a = crop(await readPng(v.referenceDir, frame), area);
 		const b = crop(await readPng(v.cloneDir, frame), area);
-		const diff = new PNG({ width: area.width, height: area.height });
-		pixelmatch(a.data, b.data, diff.data, area.width, area.height, {
-			threshold: 0.1,
-		});
+		const diff = differenceImage(a, b);
 		const rowY = headerHeight + line * rowHeight;
 		const y = rowY + LINE_HEIGHT;
 		const t = tracks.ref.frames[frame]?.t ?? 0;

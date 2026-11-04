@@ -5,10 +5,12 @@ import {
 	movingProperties,
 	type Track,
 } from "../measure/elements.ts";
+import { FRAME } from "../pixel/region.ts";
 import { matchDeclared } from "../spec/declared.ts";
 import { candidateEasing, curveSpanMs, unitCurve } from "../spec/easing.ts";
 import { elementKey, type FittedMotion, fitMotion } from "../spec/motion.ts";
 import type { Easing, SpecRow } from "../spec/schema.ts";
+import { ordinalOf } from "./motion-count.ts";
 
 export type CloneMotion =
 	| { status: "missing"; matched: number }
@@ -16,6 +18,8 @@ export type CloneMotion =
 			status: "static";
 			/** Layout properties of the same element that move in place of the wanted one. */
 			standIns: string[];
+			/** Set when the clone moves this property, but fewer times than the spec wants. */
+			count?: { got: number; want: number };
 	  }
 	| {
 			status: "moving";
@@ -39,8 +43,10 @@ const STAND_INS: Record<string, string[]> = {
 
 export interface CloneIndex {
 	frameMs: number;
-	/** Every moving property of the clone, unfiltered, by `selector[index].property`. */
+	/** Every moving property of the clone, unfiltered and whole, by `selector[index].property`. */
 	moving: Map<string, MovingProperty>;
+	/** The same, one entry per motion where a property moves several times with rests between, in time order. */
+	motions: Map<string, MovingProperty[]>;
 	present: Set<string>;
 	matched: Map<string, number>;
 	/** Moving properties per element key. */
@@ -54,10 +60,15 @@ export function indexClone(
 ): CloneIndex {
 	const moving = new Map<string, MovingProperty>();
 	const byElement = new Map<string, MovingProperty[]>();
-	for (const m of movingProperties(track)) {
+	for (const m of movingProperties(track, { split: false })) {
 		const key = elementKey(m.selector, m.index);
 		moving.set(`${key}.${m.property}`, m);
 		byElement.set(key, [...(byElement.get(key) ?? []), m]);
+	}
+	const motions = new Map<string, MovingProperty[]>();
+	for (const m of movingProperties(track)) {
+		const key = `${elementKey(m.selector, m.index)}.${m.property}`;
+		motions.set(key, [...(motions.get(key) ?? []), m]);
 	}
 	const present = new Set<string>();
 	const matched = new Map<string, number>();
@@ -69,6 +80,7 @@ export function indexClone(
 	return {
 		frameMs: track.frameMs,
 		moving,
+		motions,
 		present,
 		matched,
 		byElement,
@@ -78,7 +90,7 @@ export function indexClone(
 
 type RowShape = Pick<
 	SpecRow,
-	"selector" | "index" | "property" | "easing" | "durationMs"
+	"id" | "selector" | "index" | "property" | "easing" | "durationMs"
 >;
 
 // Measured the way the reference was: declared timing when an animation explains the track, else the row's curve held fixed.
@@ -118,18 +130,33 @@ export function measuredTiming(
 	};
 }
 
-export function measureClone(idx: CloneIndex, row: RowShape): CloneMotion {
+/**
+ * The clone's motion for a spec row. When the spec wants several motions of this property, row #n is paired with
+ * the clone's n-th motion in time; otherwise with the property's whole series.
+ */
+export function measureClone(
+	idx: CloneIndex,
+	row: RowShape,
+	want = 1,
+): CloneMotion {
 	const { selector, index, property } = row;
 	const key = elementKey(selector, index);
+	// The frame is always there; its rows are measured from pixels.
+	if (selector === FRAME) return { status: "static", standIns: [] };
 	if (!idx.present.has(key))
 		return { status: "missing", matched: idx.matched.get(selector) ?? 0 };
-	const motion = idx.moving.get(`${key}.${property}`);
+	const all = idx.motions.get(`${key}.${property}`) ?? [];
+	const motion =
+		want > 1
+			? all[ordinalOf(row.id) - 1]
+			: idx.moving.get(`${key}.${property}`);
 	if (!motion)
 		return {
 			status: "static",
 			standIns: (idx.byElement.get(key) ?? [])
 				.map((m) => m.property)
 				.filter((p) => STAND_INS[property]?.includes(p)),
+			...(all.length > 0 ? { count: { got: all.length, want } } : {}),
 		};
 	const fit = fitMotion(motion);
 	return { status: "moving", motion, fit, ...timingOf(motion, fit, row, idx) };

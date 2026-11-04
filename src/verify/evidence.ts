@@ -1,12 +1,13 @@
 import { boundsRmse, visibleChange } from "../fit/joint.ts";
-import type { Track } from "../measure/elements.ts";
+import { movingProperties, type Track } from "../measure/elements.ts";
 import type { Property } from "../measure/series.ts";
 import { valueAt } from "../measure/series.ts";
 import { curveSpanMs, unitCurve } from "../spec/easing.ts";
+import { motionId, motionRange } from "../spec/motion.ts";
 import { type ObservationModel, observe } from "../spec/observe.ts";
 import type { SpecRow } from "../spec/schema.ts";
 import type { CloneMotion } from "./clone.ts";
-import { rowLabel } from "./messages.ts";
+import { movement, rowLabel } from "./messages.ts";
 import type { Metric } from "./schema.ts";
 
 type Moving = Extract<CloneMotion, { status: "moving" }>;
@@ -29,12 +30,14 @@ export function evidenceOf(
 	row: SpecRow,
 	model: ObservationModel,
 ): Evidence {
+	const motion = movingProperties(track).find((m) => motionId(m) === row.id);
 	const { obs } = observe(
 		track,
 		row.selector,
 		row.index,
 		row.property as Property,
 		model,
+		motion ? motionRange(motion) : undefined,
 	);
 	return { obs, span: visibleChange(obs, row.to) };
 }
@@ -72,4 +75,4 @@ export function firstSeenMs(ev: Evidence): number | null {
 const num = (v: number) => Number(v.toFixed(3));
 
 export const evidenceMessage = (row: SpecRow, m: Metric) =>
-	`${rowLabel(row)} does not match the part of the motion the reference shows: rms gap ${num(m.got ?? 0)} of the visible change, the spec curve has ${num(m.want ?? 0)}; build ${num(row.from)} -> ${num(row.to)} from ${Math.round(row.startMs)} ms over ${Math.round(row.durationMs)} ms`;
+	`${rowLabel(row)} does not match the part of the motion the reference shows: rms gap ${num(m.got ?? 0)} of the visible change, the spec curve has ${num(m.want ?? 0)}; build ${movement(row.from, row.to)} from ${Math.round(row.startMs)} ms over ${Math.round(row.durationMs)} ms`;

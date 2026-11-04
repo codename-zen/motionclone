@@ -60,6 +60,7 @@ motionclone capture ref.mp4 --out .motionclone/ref --start 1.2 --end 3 --crop 0,
 - `--region name=x,y,w,h` boxes one element, in cropped video pixels; a loose box is fine.
 - Name repeated elements `card[0]`, `card[1]`: they become selector `card` with those indexes, and the spec links their stagger.
 - Without `--region`, moving blobs are found automatically and named `blob[0]`, `blob[1]`, top to bottom, then left to right.
+  A sheet that slides off the screen edge gets one region, and the content it reveals another.
   Declare regions when elements sit closer than about 6 px.
 - Colour-only, scale and clip-path changes are not measured.
 - Read the warnings; a region that was never found means the box is wrong.
@@ -74,7 +75,7 @@ Do this before motion work, so the rebuild does not start from your own look.
 3. Build the static layout first, with no motion: sizes, spacing, colours, type sizes, radii.
 4. Capture your page with `--like` (step 5), then run `motionclone verify ... --fidelity look` and `motionclone sheet .motionclone/ref .motionclone/clone --out .motionclone/design`.
    The verdict's Look section names each colour, size or block that is off, with the number to use.
-   The PNG shows reference, clone and difference at the first frame, the last frame and each still stretch.
+   The PNG shows reference, clone and difference at each rest state of the reference (the ones look.json measures) and its last frame.
 5. Fix the look rows and the biggest differences, and repeat until the look rows pass and the clone looks close.
 6. Only then go on with the motion, from step 3.
 
@@ -123,6 +124,8 @@ motionclone verify .motionclone/ref .motionclone/clone --map "card=.card"
 ```
 
 - `--like` on a recording copies its fps and clip length and uses the load trigger; `--track` is required, and the url is the clone page.
+- It also sizes the clone like the recorded screen: the viewport is the crop divided by `--css-scale`, and the device scale factor is the css scale, so clone frames have the same pixel size as the video frames.
+  Do not add `--viewport` unless the clone must differ.
 - Only fps must match the recording; viewport, trigger and seed are not compared.
 - `--map refName=cloneSelector` renames the clone's tracks to the region names, repeatable; `card=.card` maps every index, `card[2]=.x[0]` one element.
 - Rows compare change, timing and easing, not absolute positions.
@@ -138,7 +141,7 @@ motionclone verify .motionclone/ref .motionclone/clone
 The first argument is the reference capture directory or its `spec.json`.
 It writes `verdict.json`, `report.md` and, for failing rows only, `sheets/<row>.png`.
 
-Exit codes: 0 all rows pass, 1 rows fail, 2 setup error or bad input.
+Exit codes: 0 all rows pass, 1 rows fail, 2 setup error or bad input, 3 no checks (nothing was compared; not a pass).
 On exit 2, read the message: a mismatch in viewport, trigger or fps means the clone was not captured with `--like`.
 
 ## 7. Fix and repeat

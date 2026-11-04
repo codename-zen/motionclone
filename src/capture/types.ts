@@ -87,6 +87,8 @@ export interface TrackedElement {
 	quality?: number;
 	/** Video tracks only: which values were measured on this frame; the others are filled in. */
 	observed?: ObservedValues;
+	/** Video tracks only: the region cut the element's travel on this frame (ADR 0002). */
+	clipped?: boolean;
 }
 
 export interface ObservedValues {

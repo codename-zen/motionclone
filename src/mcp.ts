@@ -88,7 +88,7 @@ export function createServer(): McpServer {
 		"verify",
 		{
 			description:
-				"Check a clone capture against the spec. Returns pass/fail counts, one message per failing row, and the verdict, report and sheet paths. View a sheet only for a failing row.",
+				"Check a clone capture against the spec. Returns PASS, FAIL or NO CHECKS (nothing was compared, not a pass) with counts, one message per failing row, and the verdict, report and sheet paths. View a sheet only for a failing row.",
 			inputSchema: {
 				spec: z
 					.string()
@@ -133,7 +133,7 @@ export function createServer(): McpServer {
 		"side_by_side",
 		{
 			description:
-				"Compose a reference capture and one or more clone captures into one labelled GIF or MP4. A verdict.json in a clone directory adds its PASS or FAIL line. Warns when a GIF is over 8 MB.",
+				"Compose a reference capture and one or more clone captures into one labelled GIF or MP4. A verdict.json in a clone directory adds its PASS, FAIL or NO CHECKS line. Warns when a GIF is over 8 MB.",
 			inputSchema: SideBySideArgs.shape,
 		},
 		(args) => guarded(async () => (await sideBySideLines(args)).join("\n")),

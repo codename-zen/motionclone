@@ -1,5 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import {
+	checkedCounts,
+	countsByKind,
 	type Metric,
 	type RowVerdict,
 	statusOf,
@@ -9,7 +11,11 @@ import { lookFixes, lookLines } from "./look.ts";
 
 const cell = (m: Metric | undefined, digits = 0): string => {
 	if (!m || m.want === null || m.got === null) return "";
-	const f = (v: number) => v.toFixed(digits);
+	// A broken fit never prints its astronomical digits.
+	const f = (v: number) =>
+		Number.isFinite(v) && Math.abs(v) < 1e6
+			? v.toFixed(digits)
+			: `${v < 0 ? "under -" : "over "}1000000`;
 	return `${f(m.want)} / ${f(m.got)}${m.pass ? "" : " !"}`;
 };
 
@@ -43,8 +49,9 @@ const STATUS_LABEL = {
 /** PASS, FAIL or NO CHECKS, with the advisory row and coverage warning counts so a PASS is never read as complete. */
 export function verdictLabel(v: Verdict): string {
 	const n = v.coverage?.warnings.length ?? 0;
-	const { rows, advisory } = v.summary;
-	const base = `${STATUS_LABEL[statusOf(v)]}${advisory ? ` (${rows - advisory} rows checked, ${advisory} advisory)` : ""}`;
+	const { advisory } = v.summary;
+	const { checked } = checkedCounts(v);
+	const base = `${STATUS_LABEL[statusOf(v)]}${advisory ? ` (${checked} rows checked, ${advisory} advisory)` : ""}`;
 	return n ? `${base} with ${n} coverage warning${n === 1 ? "" : "s"}` : base;
 }
 
@@ -107,15 +114,18 @@ function notMeasuredLines(c: NonNullable<Verdict["coverage"]>): string[] {
 	return [...groups].map(([line, ids]) => `- ${ids.join(", ")}: ${line}`);
 }
 
+/** "16 of 17 checked rows pass (motion 4/4, look 12/13), 2 advisory. Fidelity: look." */
+function headline(v: Verdict): string {
+	const c = checkedCounts(v);
+	const kinds = countsByKind(v);
+	const { advisory } = v.summary;
+	const counts = `${c.passed} of ${c.checked} ${advisory ? "checked " : ""}rows pass${kinds ? ` (${kinds})` : ""}`;
+	return `${counts}${advisory ? `, ${advisory} advisory` : ""}. Fidelity: ${v.fidelity}.`;
+}
+
 /** Concise markdown summary of a verdict: one table row per spec row, then what to fix; empty sections are left out. */
 export function renderReport(v: Verdict): string {
-	const out = [
-		`# motionclone verify: ${verdictLabel(v)}`,
-		"",
-		v.summary.advisory
-			? `${v.summary.passed} of ${v.summary.rows - v.summary.advisory} checked rows pass, ${v.summary.advisory} advisory. Fidelity: ${v.fidelity}.`
-			: `${v.summary.passed} of ${v.summary.rows} rows pass. Fidelity: ${v.fidelity}.`,
-	];
+	const out = [`# motionclone verify: ${verdictLabel(v)}`, "", headline(v)];
 	if (statusOf(v) === "no-checks") out.push("", NO_CHECKS);
 	if (v.setupErrors.length > 0) {
 		out.push(

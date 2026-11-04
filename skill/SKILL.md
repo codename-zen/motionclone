@@ -63,7 +63,9 @@ motionclone capture ref.mp4 --out .motionclone/ref --start 1.2 --end 3 --crop 0,
   A sheet that slides off the screen edge gets one region, and the content it reveals another.
   Declare regions when elements sit closer than about 6 px.
 - Colour-only, scale and clip-path changes are not measured.
+- For a sliding surface (sheet, drawer, panel), box its whole travel and make sure the box holds content that rides on it (a strip, list rows), not just its plain edge, which can vanish into a same-coloured background.
 - Read the warnings; a region that was never found means the box is wrong.
+- A warning that a region was lost on some frames means a move in that window was not measured: widen the region over content that moves with the element, or capture that window on its own.
 
 ## Design pass (fidelity look only)
 

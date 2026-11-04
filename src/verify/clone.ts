@@ -1,5 +1,6 @@
 import type { AnimationRecord } from "../capture/types.ts";
 import { fitTiming } from "../fit/bezier.ts";
+import type { TimeBounds } from "../fit/plausible.ts";
 import {
 	type MovingProperty,
 	movingProperties,
@@ -9,6 +10,7 @@ import { FRAME } from "../pixel/region.ts";
 import { matchDeclared } from "../spec/declared.ts";
 import { candidateEasing, curveSpanMs, unitCurve } from "../spec/easing.ts";
 import { elementKey, type FittedMotion, fitMotion } from "../spec/motion.ts";
+import { trackBounds } from "../spec/plausible-rows.ts";
 import type { Easing, SpecRow } from "../spec/schema.ts";
 import { ordinalOf } from "./motion-count.ts";
 
@@ -43,6 +45,8 @@ const STAND_INS: Record<string, string[]> = {
 
 export interface CloneIndex {
 	frameMs: number;
+	/** The clone capture's first and last frame: its fits stay inside them, as drafting's do. */
+	bounds: TimeBounds;
 	/** Every moving property of the clone, unfiltered and whole, by `selector[index].property`. */
 	moving: Map<string, MovingProperty>;
 	/** The same, one entry per motion where a property moves several times with rests between, in time order. */
@@ -79,6 +83,7 @@ export function indexClone(
 		}
 	return {
 		frameMs: track.frameMs,
+		bounds: trackBounds(track, track.frameMs),
 		moving,
 		motions,
 		present,
@@ -90,8 +95,24 @@ export function indexClone(
 
 type RowShape = Pick<
 	SpecRow,
-	"id" | "selector" | "index" | "property" | "easing" | "durationMs"
+	"id" | "selector" | "index" | "property" | "easing" | "durationMs" | "startMs"
 >;
+
+// Time two ranges share, negative for the gap between them.
+const overlap = (a0: number, a1: number, b0: number, b1: number) =>
+	Math.min(a1, b1) - Math.max(a0, b0);
+
+/** The clone motion that shares the most time with the row's, or the one starting nearest it. */
+export function nearestMotion(
+	motions: readonly MovingProperty[],
+	row: Pick<SpecRow, "startMs" | "durationMs">,
+): MovingProperty | undefined {
+	const end = row.startMs + row.durationMs;
+	const score = (m: MovingProperty) =>
+		overlap(row.startMs, end, m.window.startMs, m.window.endMs) -
+		1e-6 * Math.abs(m.window.startMs - row.startMs);
+	return [...motions].sort((a, b) => score(b) - score(a))[0];
+}
 
 // Measured the way the reference was: declared timing when an animation explains the track, else the row's curve held fixed.
 function timingOf(
@@ -132,7 +153,8 @@ export function measuredTiming(
 
 /**
  * The clone's motion for a spec row. When the spec wants several motions of this property, row #n is paired with
- * the clone's n-th motion in time; otherwise with the property's whole series.
+ * the clone's n-th motion in time; when it wants one and the clone moves it several times, with the motion nearest
+ * the row in time; otherwise with the property's whole series.
  */
 export function measureClone(
 	idx: CloneIndex,
@@ -149,7 +171,9 @@ export function measureClone(
 	const motion =
 		want > 1
 			? all[ordinalOf(row.id) - 1]
-			: idx.moving.get(`${key}.${property}`);
+			: all.length > 1
+				? nearestMotion(all, row)
+				: idx.moving.get(`${key}.${property}`);
 	if (!motion)
 		return {
 			status: "static",
@@ -158,6 +182,6 @@ export function measureClone(
 				.filter((p) => STAND_INS[property]?.includes(p)),
 			...(all.length > 0 ? { count: { got: all.length, want } } : {}),
 		};
-	const fit = fitMotion(motion);
+	const fit = fitMotion(motion, idx.bounds);
 	return { status: "moving", motion, fit, ...timingOf(motion, fit, row, idx) };
 }

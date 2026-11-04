@@ -201,3 +201,33 @@ export const statusOf = (v: {
 }): VerdictStatus =>
 	v.status ??
 	((v.setupErrors?.length ?? 0) > 0 ? "setup-error" : v.pass ? "pass" : "fail");
+
+interface Counted {
+	summary: { rows: number; passed: number; advisory?: number };
+	look?: { summary: { rows: number; passed: number } } | null;
+}
+
+/** Checked rows: motion rows without the advisory ones, plus look rows; the verdict fails on either kind. */
+export function checkedCounts(v: Counted) {
+	const motion = {
+		passed: v.summary.passed,
+		checked: v.summary.rows - (v.summary.advisory ?? 0),
+	};
+	const look = v.look
+		? { passed: v.look.summary.passed, checked: v.look.summary.rows }
+		: null;
+	return {
+		motion,
+		look,
+		passed: motion.passed + (look?.passed ?? 0),
+		checked: motion.checked + (look?.checked ?? 0),
+	};
+}
+
+/** "motion 4/4, look 12/13" when the verdict has look rows, else an empty string. */
+export function countsByKind(v: Counted): string {
+	const c = checkedCounts(v);
+	return c.look
+		? `motion ${c.motion.passed}/${c.motion.checked}, look ${c.look.passed}/${c.look.checked}`
+		: "";
+}

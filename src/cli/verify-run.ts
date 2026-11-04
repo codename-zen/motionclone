@@ -5,7 +5,12 @@ import { NO_CHECKS, renderReport, verdictLabel } from "../report/report.ts";
 import { type SheetInfo, writeSheets } from "../report/sheet.ts";
 import { SpecFile } from "../spec/schema.ts";
 import { type VerifyOptions, verify } from "../verify/index.ts";
-import { statusOf, type Verdict } from "../verify/schema.ts";
+import {
+	checkedCounts,
+	countsByKind,
+	statusOf,
+	type Verdict,
+} from "../verify/schema.ts";
 import { UsageError } from "./capture-args.ts";
 
 export interface VerifyArgs {
@@ -102,8 +107,9 @@ export function pathLines(run: VerifyRun): string[] {
 /** Compact text for agents: counts, failing rows with messages, paths. */
 export function summarize(run: VerifyRun): string {
 	const { verdict: v } = run;
-	const checked = v.summary.rows - v.summary.advisory;
-	const head = `${verdictLabel(v)}: ${v.summary.passed}/${checked} rows pass (fidelity ${v.fidelity})`;
+	const c = checkedCounts(v);
+	const kinds = countsByKind(v);
+	const head = `${verdictLabel(v)}: ${c.passed}/${c.checked} rows pass${kinds ? ` (${kinds})` : ""} (fidelity ${v.fidelity})`;
 	const lines = statusOf(v) === "no-checks" ? [head, NO_CHECKS] : [head];
 	for (const e of v.setupErrors) lines.push(`setup error: ${e}`);
 	for (const r of v.rows) {

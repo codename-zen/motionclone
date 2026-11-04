@@ -6,7 +6,16 @@ import type { Metric } from "./schema.ts";
 
 type Moving = Extract<CloneMotion, { status: "moving" }>;
 
-const ms = (v: number | null) => Math.round(v ?? 0);
+// A timing past this many ms is a broken fit, never a motion; it prints as a bound, not as its digits.
+const MS_LIMIT = 1e6;
+
+/** Whole milliseconds; a non-finite or astronomical value prints as "over 1000000" instead of its digits. */
+export function ms(v: number | null): string {
+	const x = v ?? 0;
+	if (!Number.isFinite(x) || Math.abs(x) >= MS_LIMIT)
+		return `${x < 0 ? "under -" : "over "}${MS_LIMIT}`;
+	return String(Math.round(x));
+}
 const num = (v: number) => Number(v.toFixed(Math.abs(v) >= 10 ? 1 : 3));
 
 /** "a -> b", with digits added until the two differ; a row that ends where it starts reads "away from a and back". */
@@ -45,13 +54,13 @@ export function timingMessage(
 	what: "start" | "end" | "duration",
 	m: Metric,
 ): string {
-	const d = ms(m.diff);
+	const d = Math.round(m.diff ?? 0);
 	if (what === "duration" && isSwitch(row))
 		return `${rowLabel(row)} takes ${ms(m.got)} ms, want ${ms(m.want)} ms (a near-instant switch)`;
 	if (what === "duration")
-		return `${rowLabel(row)} runs ${Math.abs(d)} ms ${d > 0 ? "too long" : "too short"} (want ${ms(m.want)} ms, got ${ms(m.got)} ms)`;
+		return `${rowLabel(row)} runs ${ms(Math.abs(d))} ms ${d > 0 ? "too long" : "too short"} (want ${ms(m.want)} ms, got ${ms(m.got)} ms)`;
 	const verb = what === "start" ? "starts" : "ends";
-	return `${rowLabel(row)} ${verb} ${Math.abs(d)} ms ${d > 0 ? "late" : "early"} (want ${ms(m.want)}, got ${ms(m.got)})`;
+	return `${rowLabel(row)} ${verb} ${ms(Math.abs(d))} ms ${d > 0 ? "late" : "early"} (want ${ms(m.want)}, got ${ms(m.got)})`;
 }
 
 export const staggerMessage = (row: SpecRow, m: Metric) =>

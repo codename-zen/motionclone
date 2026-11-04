@@ -71,7 +71,8 @@ motionclone side-by-side ref mine-a mine-b --out compare.mp4 --from 0 --to 2000 
 - `--from` and `--to` pick the range in ms, `--fps` the frame rate, `--width` the largest picture width (default 1280).
 - `--crop x,y,w,h` cuts every input the same way, or repeat it once per input.
   Use `-` to keep one input whole.
-- A `verdict.json` in a rebuild directory adds "PASS 4/4" in green, "FAIL 1/4" in red or "NO CHECKS" in amber under its label.
+- A `verdict.json` in a rebuild directory adds "PASS 17/17" in green, "FAIL 16/17" in red or "NO CHECKS" in amber under its label.
+  The counts hold every checked row, motion and look; the report splits them, such as "motion 4/4, look 12/13".
   Run `verify` first.
 - A GIF over 8 MB prints a warning.
   Lower `--width` or `--fps`, cut the range, or write an `.mp4`.
@@ -119,14 +120,16 @@ Your version must make the same number of motions; row #2 is checked against you
 
 `spec.json` lists motions it left out under `dropped`, each with a reason.
 A fit that starts before the clip, ends after it or runs longer than it is not a row.
-Neither is a row that ends where it starts, such as an element the tracker lost for a frame.
+Neither is a row that ends where it starts, such as an element the tracker lost for a frame, nor one no curve fits.
+Frames where the video tracker lost an element are not readings; a motion seen again after them is its own row.
 
 With `--fidelity look`, verify also checks the design: page and region backgrounds, text and accent colours, type sizes, radii and the position of large blocks, plus a structure score on blurred still frames.
 Different words or images are fine; different colours, sizes or layout are not.
 From a video, type sizes are cap heights of the text lines, in CSS px: up to three sizes for the screen and for each region.
 Your version is measured from its pixels the same way, line by line in the same places.
+A line is measured from its letters: icons, dots, rules and struck-through words do not count.
 The structure score also has a text score: where the ink of each text line of the reference sits, row by row.
-Other words of the same size keep it near 1; smaller or moved text lowers it.
+Other words of the same size keep it near 1, and so does another font family of the same size; smaller or moved text lowers it.
 The **Look** section names each value that is off and the value to use.
 
 `progress` rows check how an element's look changes, such as a fade, a dim or a cross-fade.

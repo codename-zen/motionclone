@@ -1,39 +1,47 @@
-import { type ColourModel, colourModel } from "./colour.ts";
+import type { ColourModel } from "./colour.ts";
 import type { Plane, Rgba } from "./luma.ts";
 import type { Frame, Rect } from "./match.ts";
 import { TemplateModel } from "./model.ts";
 import { measureNoise, type Status } from "./quality.ts";
-import {
-	type NamedRect,
-	pickRef,
-	structureInside,
-	tighten,
-} from "./regions.ts";
+import type { NamedRect } from "./regions.ts";
 import type { RegionSample, RegionTrack } from "./samples.ts";
 import type { Lock, Pose } from "./search.ts";
 
 // Context ring around the element so a flat-coloured element still has edges to match.
 export const MARGIN = 6;
-// A changed-content box this close to the whole region did not tighten: the background changed too.
-const UNTIGHTENED = 0.9;
-// The colour box replaces such a box when it is clearly smaller.
-const SMALLER = 0.8;
-// Colours are used only when their box holds this share of the reference window's luma variance.
-const MIN_STRUCTURE = 0.5;
 
 export type End = "first" | "last";
 
 export interface TrackRegionInput extends NamedRect {
 	ref: "auto" | End;
+	/** Automatic content region: the element stays in place and shows, uncovered, at this frame. */
+	at?: number;
 }
 
-export interface Ends {
-	first: Plane;
-	last: Plane;
-	frames: { first: Frame; last: Frame };
-	rgba: { first: Rgba; last: Rgba };
-	/** A few consecutive frames at each end, for the noise estimate. */
-	near: { first: Plane[]; last: Plane[] };
+/** A frame the tracker starts from or compares against: a clip end or a rest plateau. */
+export interface Anchor {
+	k: number;
+	plane: Plane;
+	frame: Frame;
+	rgba: Rgba;
+	/** A few consecutive frames at rest from k, for the noise estimate. */
+	near: Plane[];
+}
+
+/** How one region is tracked from one anchor. */
+export interface RegionPlan {
+	ref: Anchor;
+	other: Anchor;
+	/** `rest` when the anchor is a rest plateau inside the clip. */
+	label: End | "rest";
+	/** Element box at the reference anchor, frame pixels. */
+	box: Rect;
+	/** Context ring around the box; 0 when the surroundings change between the anchors. */
+	ring: number;
+	colour: ColourModel | null;
+	floor: number;
+	/** The box was chosen as what the region holds at both anchors, so the region bounds its travel. */
+	bounded: boolean;
 }
 
 export interface State {
@@ -52,6 +60,10 @@ export interface State {
 	pose: Pose;
 	vel: Pose;
 	prevFound: boolean;
+	/** Frame of the last found reading, -1 before any. */
+	lastK: number;
+	/** The pose read at the reference frame, where tracking towards the clip start resumes. */
+	start: Pose;
 	lock: Lock;
 	noise: number;
 }
@@ -76,55 +88,14 @@ export const shiftOf = (s: State, p: Pose) => ({
 	dy: p.cy + p.s * s.offset.y - s.home.y,
 });
 
-const areaOf = (r: Rect) => r.w * r.h;
-
-/**
- * The changed content in the region, and the element's colour model when its colours hold most of that content's
- * structure; the colour box becomes the element box when the element persists at both ends, or when the whole
- * region changed, a dimming backdrop for instance.
- */
-export function elementBox(
-	r: Rect,
-	ref: End,
-	ends: Ends,
-	floor: number,
-): { box: Rect; colour: ColourModel | null } {
-	const tight = tighten(ends.first, ends.last, r, floor);
-	const other = ref === "first" ? "last" : "first";
-	const found = colourModel(ends.rgba[ref], ends.rgba[other], tight, r);
-	const colour =
-		found && structureInside(ends[ref], tight, found.box) >= MIN_STRUCTURE
-			? found
-			: null;
-	const replace =
-		colour &&
-		(colour.otherBox !== null ||
-			(areaOf(tight) >= UNTIGHTENED * areaOf(r) &&
-				areaOf(colour.box) < SMALLER * areaOf(tight)));
-	return { box: replace ? colour.box : tight, colour };
-}
-
-/**
- * The automatic reference end: for an element whose colours persist at both ends, the end where it is larger,
- * so it has the most pixels and a grow reads towards 1; otherwise the end with more structure.
- */
-export function autoRef(r: Rect, ends: Ends, floor: number): End {
-	const tight = tighten(ends.first, ends.last, r, floor);
-	const c = colourModel(ends.rgba.first, ends.rgba.last, tight, r);
-	if (c?.otherBox) return areaOf(c.otherBox) > areaOf(c.box) ? "last" : "first";
-	return pickRef(ends.first, ends.last, expand(tight, MARGIN, ends.first));
-}
-
 export function initState(
 	r: TrackRegionInput,
-	ref: End,
+	plan: RegionPlan,
 	frames: number,
-	ends: Ends,
-	floor: number,
 	lock: Lock,
 ): State {
-	const { box, colour } = elementBox(r, ref, ends, floor);
-	const win = expand(box, MARGIN, ends.first);
+	const { box, colour, ref } = plan;
+	const win = expand(box, plan.ring, ref.plane);
 	const samples: RegionSample[] = Array.from({ length: frames }, () => ({
 		found: false,
 		dx: 0,
@@ -138,23 +109,45 @@ export function initState(
 		method: "none",
 		centroid: null,
 		energy: 0,
+		clipped: false,
 	}));
 	const home = { x: box.x + box.w / 2, y: box.y + box.h / 2 };
 	const centre = { x: win.x + win.w / 2, y: win.y + win.h / 2 };
 	const cb = colour?.box ?? box;
+	const pose = { cx: centre.x, cy: centre.y, s: 1, blur: 0 };
 	return {
-		region: { name: r.name, box, ref, samples },
-		model: new TemplateModel(ends.frames[ref], win),
+		region: {
+			name: r.name,
+			box,
+			ref: plan.label,
+			refFrame: ref.k,
+			samples,
+			clipped: [],
+		},
+		model: new TemplateModel(ref.frame, win),
 		home,
 		offset: { x: home.x - centre.x, y: home.y - centre.y },
-		area: expand(r, MARGIN, ends.first),
+		area: expand(r, MARGIN, ref.plane),
 		colour,
 		colourOffset: { x: home.x - cb.x - cb.w / 2, y: home.y - cb.y - cb.h / 2 },
 		missed: null,
-		pose: { cx: centre.x, cy: centre.y, s: 1, blur: 0 },
+		pose,
 		vel: still,
 		prevFound: false,
+		lastK: -1,
+		start: pose,
 		lock,
-		noise: measureNoise(ends.near[ref], win, floor),
+		noise: measureNoise(ref.near, win, plan.floor),
 	};
+}
+
+/** Turn back to the reference frame, to track towards the start of the clip. */
+export function restart(s: State): void {
+	const k = s.region.refFrame;
+	const found = (s.region.samples[k] as RegionSample).found;
+	s.pose = s.start;
+	s.vel = still;
+	s.prevFound = found;
+	s.lastK = found ? k : -1;
+	s.missed = null;
 }

@@ -10,13 +10,28 @@ export const frameTimeMs = (k: number, fps: number) =>
 const json = (value: unknown): string =>
 	`${JSON.stringify(value, null, "\t")}\n`;
 
+/** Frames where a region cut a tracked element's travel: positions there are not observed (ADR 0002). */
+export interface ClippedTravel {
+	region: string;
+	selector: string;
+	index: number;
+	fromFrame: number;
+	toFrame: number;
+	fromMs: number;
+	toMs: number;
+}
+
 /** CSS pixels per output frame pixel. */
 export const cssPerFramePx = (r: ExtractResult) => 1 / (r.scale * r.cssScale);
 
 /** capture.json readable by spec drafting and verify, plus a `video` section with the extraction settings. */
 export async function writeVideoCaptureFile(
 	r: ExtractResult,
-	{ track, warnings }: { track: string[]; warnings: string[] },
+	{
+		track,
+		warnings,
+		clipped,
+	}: { track: string[]; warnings: string[]; clipped: ClippedTravel[] },
 ): Promise<void> {
 	const viewport = {
 		width: Math.max(1, Math.round(r.crop.w / r.cssScale)),
@@ -53,6 +68,7 @@ export async function writeVideoCaptureFile(
 				cssScale: r.cssScale,
 				frameSize: { width: r.width, height: r.height },
 				sourceFrames: r.sourceFrames,
+				clippedTravel: clipped,
 			},
 			versions: { node: process.version },
 			warnings,

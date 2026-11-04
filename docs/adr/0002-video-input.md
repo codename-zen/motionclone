@@ -30,6 +30,7 @@ The lossless round trip is tested: a PNG-in-mov encode of a capture extracts bac
 Each region is one element, given in source pixels after the crop, or found automatically.
 The work happens on luma (Rec. 601) after a 3x3 box blur, which removes most compression noise and gif dithering.
 A region is first tightened to the content that differs between the first and last frame, so a loose box around a card shrinks to the card.
+A clip that ends in the state it starts in is planned from its rest plateaus instead (see rest plateaus below).
 The reference frame is the end of the clip (first or last) that shows more structure inside the region: the last frame for an entrance, the first for an exit or a move.
 The template is the element box at the reference frame plus a 6 px ring of surroundings, so a flat-coloured element still has edges to match.
 Tracking runs from the reference end towards the other end with normalised cross-correlation against a model of the element at a pose: centre, uniform scale and blur (next section).
@@ -44,7 +45,7 @@ It is not snapped near 1 frame by frame, because that cut the slow tail of an ea
 Blur is written as `filter: "blur(Npx)"` in CSS pixels of the element's own space, and as `none` under one reference-frame pixel.
 Proxy values of 0.98 and above count as 1, because the proxy jitters by about 0.03 on h264 at crf 18.
 `regions.json` keeps the raw measurements per frame: shift of the box centre, scale, blur (reference-frame pixels), correlation, opacity proxy, `quality`, `status`, centroid of change against frame 0 and motion energy (mean luma change from the previous frame inside the box).
-Automatic regions are connected blobs of 4 px cells whose mean change against frame 0 ever exceeds the noise floor (3 luma levels by default); blobs under 16 cells are dropped, the largest `maxRegions` (8) are kept with a warning when more exist, and they are named `blob[0]`, `blob[1]`... ordered top to bottom, then left to right.
+Automatic regions are connected blobs of 4 px cells whose mean change against frame 0, or against the rest plateau before it (see rest plateaus below), ever exceeds the noise floor (3 luma levels by default); blobs under 16 cells are dropped, the largest `maxRegions` (8) are kept with a warning when more exist, and they are named `blob[0]`, `blob[1]`... ordered top to bottom, then left to right.
 
 ## Decision: scale and blur
 
@@ -137,12 +138,14 @@ The patch is the largest 8-connected group of cells at least a quarter matched, 
 The other candidates join when at least 80 % of their matches at the reference end fall inside the leading colours' box and they are just as rare outside that box at both ends; this is how a darker pattern joins a solid colour.
 The kept colours must fill at least half of their box at both ends, the two boxes must have the same aspect within 10 %, and neither box may reach all four sides of the region (that is a background around something, not an element).
 The rarity rule is local on purpose: a card that grows to fill most of the region is common in the region at its expanded end, but rare around itself.
+The element must also stay visible and connected through the transition, not just appear at both ends: the colour box must read on every frame between the ends, with gaps of at most two frames, and from one reading to the next change scale by at most 0.2 (log units) and move its centre by at most half its size per frame.
+Otherwise the persistent model is refused and the content swap rule below is tried.
 Content swap: a candidate is kept when at most 0.5 % of the region at the other end lies within 42 (RGB distance) of it, when no other dominant colour of the window that fails that test lies within 42 of it, and when at least 80 % of its matches (within 28) fall inside the box the candidates form together.
 In both cases a candidate within 42 of a dominant colour that was not kept is dropped, because it would match that background too.
 The model is used only when the kept colours fill at least half of their box and that box holds at least half of the window's luma variance, so a small coloured detail on a white card does not count.
 For a persistent element the colour box at the reference end becomes the element box.
 For a content swap it does so when the changed-content box covers at least 90 % of the region (the whole region changed, as under a dimming backdrop) and the colour box is under 80 % of it.
-With an automatic reference, a region whose element persists in colour at both ends uses the end where the element is larger: the template has the most pixels there, and a grow reads towards 1 as CSS writes it (0.62 to 1, not 1 to 1.6).
+With an automatic reference, a region whose element persists in colour at both ends, connected in between, uses the end where the element is larger: the template has the most pixels there, and a grow reads towards 1 as CSS writes it (0.62 to 1, not 1 to 1.6).
 Other regions keep the end with more structure.
 Per frame, pixels within 28 of a set colour form a mask over the region; 4 px cells at least half matched form 8-connected components, and the largest one's box is narrowed to the rows and columns that hold at least 3 matching pixels and a tenth of the fullest one.
 The reading is valid when that box is at least 60 % as full as at the reference and its aspect is within 10 % of the reference; its scale is the square root of the area ratio, and its centre maps to the element box through the reference offset, so it follows the same box and transform conventions as the template.
@@ -174,6 +177,104 @@ Captured at 57 fps, encoded at crf 18, with a region of the start and end boxes 
 - with the reference set to the first end, the colour model is refused there (the small card holds 35 % of the region's luma variance), the last-end track fills the frames through the merge, and scale reads 1.606 at the end against 1.603 on the page;
 - tracking takes 8 to 12 s for 79 frames, and expand-dim-reveal measures exactly as above.
 
+A notch recording later showed the persistent rule taking two elements for one: a small thumbnail in the closed notch looks like the large album art of the open player, in the same colours and the same place, so the art was read as one element growing from the thumbnail and its drafted rows dropped from medium to low confidence (advisory).
+The notch-thumb-on-art variant of notch-expand reproduces it: the compact thumbnail sits inside the art's region and shares the art's cover (two discs on a two-colour checker), and the panel grows from a pill that covers it.
+Captured at 60 fps, encoded at crf 18, with regions of the start and end boxes plus 6 px:
+- before: the persistent colour model was built (56 frames `both-agree`), every frame was found, frames 0 to 28 at scale 0.31 on the thumbnail, and the art's opacity, y and blur rows were low confidence (fit rms 0.35, 1.57 and 1.95 of the change);
+- the template alone did the same once the colour model was taken away: from the faint, blurred art on frame 29 it jumped to the thumbnail (scale 0.85 to 0.52 to 0.32, 78 px in one frame).
+
+Two rules now require the element to stay connected:
+- the persistent colour model must read on the frames between the ends (above);
+- a `found` template reading must keep its scale within 0.2 (log units) of the prediction per frame since the last found frame, counting at most two frames, or it is judged `other`; this applies to the wide search too.
+  Scale steps on the existing fixtures stay under 0.08 per frame.
+
+After both, on the same variant: no colour model, nothing found before frame 29 (483 ms; the art starts entering at 450 ms), and the art rows are medium again: opacity 0.07 to 1, scale 0.81 to 1, y and blur 10.8 to 0 px, all from 455.1 ms over 261.6 ms, like notch-expand itself.
+The expand-in-grid and expand-dim-reveal cases measure as above.
+
+## Decision: rest plateaus, loops and colour flips
+
+A phone recording (56 fps, 8 s, 600x1032 after crop) broke the model of an element as what changed between the first and the last frame.
+A white sheet with a week strip and a task list slides down about 440 px to reveal a dark summary while the whole page flips from white to near-black, holds, slides back up, and does it all again; the clip ends where it starts.
+Regions over the whole clip found nothing that changed between the ends, tight boxes locked onto the task list, and automatic regions returned one blob covering the whole screen.
+Cut into one-slide pieces the clip still failed: the page flip changed every pixel of the region, so its tightened box was the whole region.
+The sheet-loop fixture reproduces it with its own design: the sheet slides 440 px down in 300 ms (easeOutCubic) at 400 and 4400 ms and back up at 2300 and 6300 ms, while the page background flips the same way.
+
+Rest plateaus: every frame is read once into a quarter-resolution copy.
+A frame is still in a region when at most 0.2 % of the region's quarter-resolution pixels changed by more than the noise floor since the previous frame, and five still frames in a row form a rest plateau, represented by its middle frame (or the clip end it holds).
+Two frames show the same state when at most 1 % of the pixels differ by more than the noise floor.
+When a region shows the same state at both clip ends and a plateau shows another, the region is planned from two anchors, frame 0 and the plateau that differs most from it; every other region keeps the two clip ends.
+Plateaus inside a clip whose ends differ are not used: the slow tail of an ease-out or the turn of an overshoot also stands still for five frames.
+
+Travel: the element is the content that travels between the anchors.
+Blocks of 64 px at eighth resolution vote for the displacement where their zero-mean luma correlates best (at least 0.9) anywhere in the frame; the most voted displacement that is not a standstill, with at least two votes, is refined with the summed correlation of 32 px blocks at quarter resolution and of the moving blocks at full resolution.
+Correlation of zero-mean blocks judges identity on structure: brightness and contrast are normalised per block, so a white sheet on a white page matches the same sheet on a black page.
+A 32 px block is moving when it correlates at least 0.8 at the travel and 0.05 better than in place; the moving blocks that stay 8 px inside the region at both anchors make the element box.
+The box then grows by up to 32 px on each side, and is trimmed back, to the rows and columns whose pixels agree within twice the noise floor at both anchors; a fitted box under half the moving blocks' box is not a rigid element, and there is no travel.
+When no moving block stays inside at both anchors, the box is the moving content inside the region at the first anchor (clipped travel below).
+Without travel, the box is the content that changed between the anchors.
+The reference is the anchor where the box with a 6 px ring holds more luma variance (the sheet over the dark page), or the anchor that holds the element inside the region when it leaves.
+The context ring is left out of the template when its mean luma changes by more than 12 levels between the anchors, so a page that flips around the element does not count against the match.
+The element is the same size at both anchors, so it is tracked as a rigid move: scale and blur are fixed from the first pass, which also keeps motion blur from reading as a CSS blur.
+Tracking runs from the reference frame to the end of the clip, then from the reference frame back to the start; the other anchor's track, the merge and the rebase work as for clip ends.
+A region whose ends differ, whose box did not tighten (at least 90 % of the region) and which has no colour model uses the same travel plan between the clip ends when rigid content travels and stays inside, so a single slide cut from such a clip is tracked the same way.
+
+Automatic regions: a cell also counts when its quarter-resolution mean changes by more than the noise floor against the whole-frame rest plateau before it, so each transition counts on its own, not only against frame 0.
+A blob whose box covers at least half the frame is replaced by the content that travels inside it: for each pair of consecutive whole-frame rest states, the travel box at both states, joined and padded by 16 px, with sweeps that overlap by half merged.
+It stays one blob only when nothing travels, so a page flip never hides a travelling edge in one whole-screen blob.
+
+On sheet-loop captured at 56 fps (449 frames) and encoded at crf 18:
+- with one region over the sheet's travel (x 0, y 84, 600x948): anchors frame 0 and frame 307, reference frame 307, the box 584x487 under the sheet's top edge without a ring, every frame found, and the box top follows the page's sheet top within 3 px on every frame;
+- fitted per slide, the box y starts at 400.0, 2299.9, 4400.0 and 6300.0 ms (key 400, 2300, 4400, 6300), lasts 284.9, 292.1, 282.5 and 272.2 ms (key 300) and travels 440.0 to 440.1 px;
+- with automatic regions: one region (the whole-screen blob replaced by the sheet's sweep), with the same anchors, reference and box, and the box top again within 3 px of the page on every frame;
+- tracking takes 19 to 23 s for each run (up to 48 s while other suites run), against 67 s before for a track that lost the sheet on every frame after the first slide.
+
+## Decision: clipped travel
+
+A cut of the same recording reported a slide of 260.5 px for a sheet that moved about 440 px: tracking stopped at the edge of the region box, and nothing said so.
+A region planned from travel bounds its element, since the box is chosen as what the region holds at both anchors.
+On such a region a found frame is clipped when its box reaches more than 1 px past the region, or within 1 px of the region edge while its centre moved more than 0.5 px from a neighbouring found frame; frames lost next to a clipped frame join its range, because that is where the element left the region.
+Clipped frames keep their measured values, but their position is not observed: `observed.position` is false and the element in `track.json` carries `clipped: true` (every video element carries the field).
+`regions.json` lists the ranges per region (`clipped: [{ from, to }]`, frames), `capture.json` lists them under `video.clippedTravel` (`region`, `selector`, `index`, `fromFrame`, `toFrame`, `fromMs`, `toMs`), and a warning names the region and the frames, so spec drafting can mark the distance as a lower bound.
+Regions planned from two different clip ends are not bounded: their box is often the whole tightened region and the tracker follows the element past it (motion-spring's region covers only the start of a 200 px move), so they are never marked.
+On sheet-loop with a region that ends 52 px under the sheet's first rest (y 84, 600x500), the box is the sheet inside the region at frame 0 and the warnings name frames 23 to 144 (411 to 2571 ms) and 246 to 368 (4393 to 6571 ms), the two trips down and back; with the region over the whole travel there is no warning.
+
+## Decision: crops, the frame edge and content that stays in place
+
+A phone recording (1920x1080, cropped to the 600x1032 phone screen, `--css-scale 1.5`) of the same kind of sheet broke automatic regions: one blob, the whole sheet pressed against the bottom edge, and 9 clipped travel warnings, so the regions had to be declared by hand.
+The sheet travels about 64 % of the screen height and is longer than the screen, so at its lower rest only its top shows.
+The sheet-loop fixture cropped to 600x640 has the same proportions (440 px of travel, 104 px of sheet in view at the lower rest); before this decision the same fixture lost the sheet on 20 % of frames at a 680 px crop (travel read 436 px), found no travel at all at 600 px, and at 800 px gave one region with the summary inside it.
+
+Four rules changed:
+- Travel voting uses 64 px blocks at half-block steps, so content near the frame edge still has a block that fits at both states whatever the region's origin.
+- Refining a displacement counts only the blocks that stay in the frame over the whole search window; before, a block pushed out of the frame scored -1, which pulled the peak towards shifts that kept more blocks inside (436 instead of 440 px).
+- A fitted row or column also needs a mean change within the noise floor, not only 90 % of its pixels within twice the floor, so rounded corners over a page that flips are trimmed; on the 640 px crop they had held the correlation at 0.946, under the quality gate, and the sheet was lost at its upper rest.
+- When no moving block stays inside the region at both states and every side the content moves towards is a frame edge, the box is the moving content that stays in view at both states instead of the content that leaves.
+
+Clipped travel is a region cutting the element, not the frame: a region side that lies on the frame edge never marks a frame clipped.
+An element larger than the frame is tracked by the part that stays in view, which includes its leading edge.
+
+Content that stays in place: inside a whole-screen blob with travel, each transition between rest states also marks 4 px cells outside the travelling element whose 12 px window holds structure (luma deviation 4) where it shows.
+The element covers its box at each state and is carried to the frame edge on each side where its box comes within 32 px (one travel block) of that edge at either state, because it continues past the frame there.
+Cells within 16 px outside that cover are its edge (fitting trims up to a few rows, and the window reaches 4 px) and never count.
+Cells the element reveals or covers count when the uncovered state shows structure; cells outside it at both states count when they changed, except when their zero-mean structure correlates 0.9 or more in place, which is a recolour such as text over a page that flips.
+Transitions without travel are skipped, because there the element cannot be told apart from what it reveals.
+Marked cells within 24 px join, groups under 16 cells are dropped, and each group becomes a region padded by 8 px, planned from the rest state where most of its cells show: that frame is the reference, the rest state that differs most is the other anchor, the box is the changed content, and there is no track from the other anchor, which holds whatever covers the content there.
+Such a region is not bounded, so it is never marked clipped.
+
+On sheet-loop at 56 fps (449 frames), encoded at crf 18 and cropped to 600x640:
+- automatic regions are the sheet (box 562x95 under its top edge at the lower rest, every frame found, the top edge within 3 px of the page on every frame), the summary title and subtitle (208x116) and the summary bars (532x180); the header only flips colour and gets no region;
+- no clipped travel warning;
+- the capture takes about 47 s, extraction included, for the three regions.
+
+Uncropped, the same fixture now gives the sheet (box 580x484 instead of 584x487, the corners trimmed, every frame found) plus the same two summary regions.
+
+## Decision: cloning a recording with --like
+
+`--like <videoCaptureDir>` used to take only fps, duration and a load trigger, so a clone of a phone recording was captured at 1280x800 and scale 1, and every look check failed (background ΔE 92.6, SSIM 0.25) until the viewport was set by hand; the density could not be matched at all.
+The clone now also takes the recorded screen: the viewport is the crop divided by `cssScale` (rounded), and the device scale factor is `scale * cssScale` (the css scale unless `--width` rescaled the frames), so clone frames have the reference frames' pixel size: 600x1032 at `--css-scale 1.5` gives 400x688 at 1.5x.
+Explicit flags still override, and the clone's `capture.json` records what was derived under `options.likeVideo` (capture, crop, cssScale, scale, frameSize, viewport, deviceScaleFactor).
+A crop that does not divide by the css scale gives frames up to one pixel off.
+
 ## Limits
 
 - Uniform scale and Gaussian blur only: rotation, non-uniform scale, perspective and clip-path changes lower the correlation and are not measured; they read as reduced opacity or a lost element.
@@ -198,13 +299,17 @@ Captured at 57 fps, encoded at crf 18, with a region of the start and end boxes 
 - Merging the two ends needs frames both tracks found; a cross-fade between two different contents with no such frame keeps the other end's frames out.
 - Overlapping elements: when another moving element enters the template area, the match follows whichever dominates; declare tighter regions or crop.
 - Automatic blobs merge elements closer than about one cell plus the blur (about 6 px); declare regions in that case.
+- Rest plateaus are used only when a region ends in the state it starts in; a clip that moves through three states keeps its two ends as anchors and finds the middle state by continuity.
+- A region planned from travel is a rigid move: an element that also scales or blurs between its rest states, or only in the middle of the move, is not measured as scaling or blurring.
+- Travel needs blocks with structure that look alike at both anchors; a flat panel with no content does not vote and is planned from the changed content.
+- A found reading whose scale jumps by more than 0.2 (log units) per frame is refused, so an element that really grows that fast, or that reappears after a gap at a very different size, is not followed; the other anchor's track can still fill it.
 - An element is unobservable while fully transparent; the extrapolation above covers entrances that move and fade together, not ones that move a long way before appearing.
 - Compression noise sets the floor: on h264 crf 18 the position jitters by about 0.1 px and the opacity proxy by about 0.03; heavier compression needs a higher `noiseFloor`.
 - Gif palettes and dithering add noise, and centisecond delays quantise timing to 10 ms.
 - Variable frame rate recordings are handled by the timestamp rule above, but the default fps comes from the header average.
 - A full-frame decode is done once to read timestamps, so cost grows with the position of `start` in long recordings.
 - Verify can compare a video reference with a DOM clone: `--map card=.card` renames the clone's track keys to the region names (`card[2]=.x[0]` maps one element).
-  Only fps must match, so the clone is captured with `--like <videoCaptureDir>`, which takes fps, duration and a load trigger from the video; viewport, trigger and seed are not compared against a video.
+  Only fps must match, so the clone is captured with `--like <videoCaptureDir>`, which takes fps, duration, a load trigger and the recorded screen's size and scale from the video (see cloning a recording above); viewport, trigger and seed are not compared against a video.
   Rows compare change, timing and easing, never absolute offsets.
   Distances are CSS pixels on both sides: the video side is scaled by `cssScale`, and a DOM `translateY` moves the box y too, so video box rows are compared with the clone's box x and y.
   Relative distances are not used against a video, because the region box and the element box differ in size.

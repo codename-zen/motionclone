@@ -26,14 +26,20 @@ export interface RegionSample {
 	centroid: { x: number; y: number } | null;
 	/** Mean absolute luma change from the previous frame inside the box. */
 	energy: number;
+	/** The box reached past the region edge on this frame: its position is not a reading of the whole travel. */
+	clipped: boolean;
 }
 
 export interface RegionTrack {
 	name: string;
 	/** Element box in the reference frame, frame pixels. */
 	box: Rect;
-	ref: "first" | "last";
+	/** The clip end the reference frame is, or `rest` for a rest plateau inside the clip. */
+	ref: "first" | "last" | "rest";
+	refFrame: number;
 	samples: RegionSample[];
+	/** Frame ranges where the box reached past the region edge while moving. */
+	clipped: { from: number; to: number }[];
 }
 
 /** The reference box moved and scaled about its centre as a sample says. */

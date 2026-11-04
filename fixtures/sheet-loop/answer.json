@@ -1,0 +1,74 @@
+{
+	"name": "sheet-loop",
+	"description": "A white sheet with a week strip and a task list slides down 440 px (300 ms, easeOutCubic) to reveal a dark summary while the page background flips from white to near-black, holds, slides back up and repeats: four moves at 400, 2300, 4400 and 6300 ms, ending where it starts. Each move is its own animation composited with add. Models a looping clip with a global colour flip.",
+	"viewport": {
+		"width": 600,
+		"height": 1032
+	},
+	"trigger": {
+		"type": "load"
+	},
+	"captureMs": 8000,
+	"rows": [
+		{
+			"selector": ".sheet",
+			"index": 0,
+			"property": "translateY",
+			"from": 0,
+			"to": 440,
+			"startMs": 400,
+			"durationMs": 300,
+			"easing": {
+				"type": "cubic-bezier",
+				"p": [0.33, 1, 0.68, 1]
+			},
+			"iterations": 1,
+			"source": "css-animation"
+		},
+		{
+			"selector": ".sheet",
+			"index": 0,
+			"property": "translateY",
+			"from": 440,
+			"to": 0,
+			"startMs": 2300,
+			"durationMs": 300,
+			"easing": {
+				"type": "cubic-bezier",
+				"p": [0.33, 1, 0.68, 1]
+			},
+			"iterations": 1,
+			"source": "css-animation"
+		},
+		{
+			"selector": ".sheet",
+			"index": 0,
+			"property": "translateY",
+			"from": 0,
+			"to": 440,
+			"startMs": 4400,
+			"durationMs": 300,
+			"easing": {
+				"type": "cubic-bezier",
+				"p": [0.33, 1, 0.68, 1]
+			},
+			"iterations": 1,
+			"source": "css-animation"
+		},
+		{
+			"selector": ".sheet",
+			"index": 0,
+			"property": "translateY",
+			"from": 440,
+			"to": 0,
+			"startMs": 6300,
+			"durationMs": 300,
+			"easing": {
+				"type": "cubic-bezier",
+				"p": [0.33, 1, 0.68, 1]
+			},
+			"iterations": 1,
+			"source": "css-animation"
+		}
+	]
+}

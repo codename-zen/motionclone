@@ -3,16 +3,17 @@ import { join } from "node:path";
 import { z } from "zod";
 import type { TrackedElement, TrackFrame } from "../capture/types.ts";
 import { writeVideoLook } from "../look/video.ts";
+import { changePeaks, findBlobs } from "./blobs.ts";
 import {
+	type ClippedTravel,
 	cssPerFramePx,
 	frameTimeMs,
 	writeVideoCaptureFile,
 } from "./capture-file.ts";
 import { type ExtractResult, extractFrames } from "./extract.ts";
-import { readLuma } from "./luma.ts";
 import { ExtractOptions, parseRegionName, Region } from "./options.ts";
-import { findBlobs } from "./regions.ts";
 import { type RegionSample, type RegionTrack, sampleBox } from "./samples.ts";
+import { scanClip } from "./scan.ts";
 import { MIN_BLUR, type TrackRegionInput, trackRegions } from "./track.ts";
 
 export { extractFrames } from "./extract.ts";
@@ -51,7 +52,9 @@ export type VideoOptions = z.output<typeof VideoOptions>;
 
 export interface VideoRegionSummary {
 	name: string;
-	ref: "first" | "last";
+	/** The clip end the reference frame is, or `rest` for a rest plateau inside the clip. */
+	ref: "first" | "last" | "rest";
+	refFrame: number;
 	/** Element box in the reference frame, CSS pixels. */
 	box: { x: number; y: number; w: number; h: number };
 	/** Frames where the element was visible and matched. */
@@ -90,7 +93,12 @@ function toFramePx(regions: Region[], ex: ExtractResult): TrackRegionInput[] {
 	});
 }
 
-function element(t: RegionTrack, k: number, css: number): TrackedElement {
+/** A tracked element, plus `clipped`: the region cut its travel on this frame (ADR 0002). */
+function element(
+	t: RegionTrack,
+	k: number,
+	css: number,
+): TrackedElement & { clipped: boolean } {
 	const s = t.samples[k] as RegionSample;
 	// Regions that do not scale are tracked with scale fixed at exactly 1.
 	const scale = Math.round(s.scale * 10000) / 10000;
@@ -111,12 +119,29 @@ function element(t: RegionTrack, k: number, css: number): TrackedElement {
 		boxShadow: "none",
 		quality: Math.round(s.quality * 100) / 100,
 		observed: {
-			position: s.found,
+			position: s.found && !s.clipped,
 			scale: s.status === "found",
 			blur: s.status === "found" && s.method !== "colour",
 			opacity: s.status !== "other" && s.method !== "colour",
 		},
+		clipped: s.clipped,
 	};
+}
+
+/** Frame ranges where a region cut an element's travel, for capture.json and the warnings. */
+function clippedTravel(tracks: RegionTrack[], fps: number): ClippedTravel[] {
+	return tracks.flatMap((t) => {
+		const { selector, index } = parseRegionName(t.name);
+		return t.clipped.map((c) => ({
+			region: t.name,
+			selector,
+			index,
+			fromFrame: c.from,
+			toFrame: c.to,
+			fromMs: frameTimeMs(c.from, fps),
+			toMs: frameTimeMs(c.to, fps),
+		}));
+	});
 }
 
 /** Turn a screen recording or gif into a capture directory that spec drafting and verify can read. */
@@ -128,37 +153,34 @@ export async function captureVideo(
 	const warnings = [...ex.warnings];
 	const dir = ex.outDir;
 	let regions: TrackRegionInput[];
-	let ends: {
-		first: Awaited<ReturnType<typeof readLuma>>;
-		last: Awaited<ReturnType<typeof readLuma>>;
-	};
-	if (opts.regions) {
-		regions = toFramePx(opts.regions, ex);
-		ends = {
-			first: await readLuma(dir, 0),
-			last: await readLuma(dir, ex.frames - 1),
-		};
-	} else {
+	const changes = opts.regions ? null : changePeaks(ex.width, ex.height);
+	const scan = await scanClip(dir, ex.frames, changes?.visit);
+	if (opts.regions) regions = toFramePx(opts.regions, ex);
+	else {
 		const found = await findBlobs(
 			dir,
-			ex.frames,
+			scan,
+			changes as ReturnType<typeof changePeaks>,
 			opts.noiseFloor,
 			opts.maxRegions,
 			warnings,
 		);
-		regions = found.rects.map((r) => ({ ...r, ref: "auto" }));
-		ends = found;
+		regions = found.map((r) => ({ ...r, ref: "auto" }));
 		if (regions.length === 0)
 			warnings.push("no moving blobs found: nothing is tracked");
 	}
 	const tracks = await trackRegions(
 		dir,
-		ex.frames,
+		scan,
 		regions,
-		ends,
 		opts.noiseFloor,
 		warnings,
 	);
+	const clipped = clippedTravel(tracks, ex.fps);
+	for (const c of clipped)
+		warnings.push(
+			`region ${c.region}: the element reaches past the region edge while it moves on frames ${c.fromFrame}-${c.toFrame} (${c.fromMs}-${c.toMs} ms); positions there are not observed and its travel may be truncated: widen the region to cover the whole move`,
+		);
 	const css = cssPerFramePx(ex);
 	const bySelector = new Map<string, RegionTrack[]>();
 	for (const t of tracks) {
@@ -197,7 +219,7 @@ export async function captureVideo(
 		join(dir, "regions.json"),
 		json({ cssPerFramePx: css, regions: tracks }),
 	);
-	await writeVideoCaptureFile(ex, { track: names, warnings });
+	await writeVideoCaptureFile(ex, { track: names, warnings, clipped });
 	await writeVideoLook(dir);
 	return {
 		outDir: dir,
@@ -208,6 +230,7 @@ export async function captureVideo(
 		regions: tracks.map((t) => ({
 			name: t.name,
 			ref: t.ref,
+			refFrame: t.refFrame,
 			box: {
 				x: r1(t.box.x * css),
 				y: r1(t.box.y * css),

@@ -1,65 +1,80 @@
-import { type Plane, type Rgba, readFrame } from "./luma.ts";
+import type { Plane, Rgba } from "./luma.ts";
 import { type Frame, pyramid } from "./match.ts";
 import { changeStats, type RegionSample, sampleBox } from "./samples.ts";
-import type { Ends, State } from "./state.ts";
-import { shiftOf } from "./state.ts";
+import { type Anchor, restart, type State, shiftOf } from "./state.ts";
 import { step } from "./step.ts";
 
-async function frameAt(dir: string, k: number, frames: number, ends: Ends) {
-	if (k === 0)
-		return { plane: ends.first, f: ends.frames.first, rgba: ends.rgba.first };
-	if (k === frames - 1)
-		return { plane: ends.last, f: ends.frames.last, rgba: ends.rgba.last };
-	const { luma, rgba } = await readFrame(dir, k);
-	return { plane: luma, f: pyramid(luma) as Frame, rgba: rgba as Rgba };
+/** Reads a frame for tracking; anchors are reused. */
+export type FrameSource = (
+	k: number,
+) => Promise<{ plane: Plane; f: Frame; rgba: Rgba }>;
+
+export function frameSource(
+	read: (k: number) => Promise<{ luma: Plane; rgba: Rgba }>,
+	anchors: Map<number, Anchor>,
+): FrameSource {
+	return async (k) => {
+		const a = anchors.get(k);
+		if (a) return { plane: a.plane, f: a.frame, rgba: a.rgba };
+		const { luma, rgba } = await read(k);
+		return { plane: luma, f: pyramid(luma), rgba };
+	};
 }
 
-/** Each state from its reference end of the clip towards the other end, or until `done` says it may stop. */
+/** `done` says a state may stop tracking at frame k while moving in direction `dir`. */
+export type Done = (s: State, k: number, dir: 1 | -1) => boolean;
+
+/**
+ * Each state from its reference frame to the end of the clip, then from the reference frame back to its start.
+ * Change statistics compare each frame with frame 0 (`base`) and with the frame tracked before it.
+ */
 export async function runPass(
-	dir: string,
 	frames: number,
 	states: State[],
-	ends: Ends,
+	source: FrameSource,
+	base: Plane,
 	floor: number,
-	done: (s: State, k: number) => boolean = () => false,
+	done: Done = () => false,
 ) {
-	for (const ref of ["first", "last"] as const) {
-		let group = states.filter((s) => s.region.ref === ref);
-		if (group.length === 0) continue;
-		const order = Array.from({ length: frames }, (_, i) =>
-			ref === "first" ? i : frames - 1 - i,
-		);
-		let prev: { k: number; plane: Plane } | null = null;
-		for (const k of order) {
-			const { plane, f, rgba } = await frameAt(dir, k, frames, ends);
-			for (const s of group) {
-				step(s, f, rgba, k);
-				const box = sampleBox(s.region.box, {
-					...(s.region.samples[k] as RegionSample),
-					...shiftOf(s, s.pose),
-					scale: s.pose.s,
-				});
-				(s.region.samples[k] as RegionSample).centroid = changeStats(
-					plane,
-					ends.first,
-					box,
-					floor,
-				).centroid;
-				if (prev) {
-					const [later, earlier] =
-						prev.k > k ? [prev, plane] : [{ k, plane }, prev.plane];
-					const ls = s.region.samples[later.k] as RegionSample;
-					ls.energy = changeStats(
-						later.plane,
-						earlier,
-						sampleBox(s.region.box, ls),
+	const refs = [...new Set(states.map((s) => s.region.refFrame))];
+	for (const ref of refs)
+		for (const dir of [1, -1] as const) {
+			let group = states.filter((s) => s.region.refFrame === ref);
+			// From the last frame the backward sweep simply continues the forward one.
+			if (dir === -1 && ref < frames - 1) for (const s of group) restart(s);
+			let prev: { k: number; plane: Plane } | null =
+				dir === -1 ? { k: ref, plane: (await source(ref)).plane } : null;
+			for (let k = dir === 1 ? ref : ref - 1; k >= 0 && k < frames; k += dir) {
+				const { plane, f, rgba } = await source(k);
+				for (const s of group) {
+					step(s, f, rgba, k);
+					if (k === ref) s.start = { ...s.pose };
+					const box = sampleBox(s.region.box, {
+						...(s.region.samples[k] as RegionSample),
+						...shiftOf(s, s.pose),
+						scale: s.pose.s,
+					});
+					(s.region.samples[k] as RegionSample).centroid = changeStats(
+						plane,
+						base,
+						box,
 						floor,
-					).mean;
+					).centroid;
+					if (prev) {
+						const [later, earlier] =
+							prev.k > k ? [prev, plane] : [{ k, plane }, prev.plane];
+						const ls = s.region.samples[later.k] as RegionSample;
+						ls.energy = changeStats(
+							later.plane,
+							earlier,
+							sampleBox(s.region.box, ls),
+							floor,
+						).mean;
+					}
 				}
+				prev = { k, plane };
+				group = group.filter((s) => !done(s, k, dir));
+				if (group.length === 0) break;
 			}
-			prev = { k, plane };
-			group = group.filter((s) => !done(s, k));
-			if (group.length === 0) break;
 		}
-	}
 }

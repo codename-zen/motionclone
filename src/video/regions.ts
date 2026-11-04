@@ -1,7 +1,6 @@
-import { type Plane, readLuma } from "./luma.ts";
+import type { Plane } from "./luma.ts";
 import type { Rect } from "./match.ts";
 
-const CELL = 4;
 const MIN_BLOB_CELLS = 16;
 const MIN_LINE_PIXELS = 2;
 
@@ -38,7 +37,7 @@ export function tighten(a: Plane, b: Plane, r: Rect, floor: number): Rect {
 	};
 }
 
-function spread(p: Plane, r: Rect): number {
+export function spread(p: Plane, r: Rect): number {
 	let s = 0;
 	let ss = 0;
 	for (let j = 0; j < r.h; j++)
@@ -117,61 +116,4 @@ export function components(
 			out.push({ x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1, cells });
 	}
 	return out.sort((a, b) => b.cells - a.cells);
-}
-
-/**
- * One region per connected blob of cells whose mean change against frame 0 ever exceeds the noise floor.
- * Returns the largest `max` blobs in reading order, plus the end frames for reuse.
- */
-export async function findBlobs(
-	dir: string,
-	frames: number,
-	floor: number,
-	max: number,
-	warnings: string[],
-): Promise<{ rects: NamedRect[]; first: Plane; last: Plane }> {
-	const first = await readLuma(dir, 0);
-	let last = first;
-	const cw = Math.floor(first.width / CELL);
-	const ch = Math.floor(first.height / CELL);
-	const peak = new Float32Array(cw * ch);
-	const sums = new Float32Array(cw * ch);
-	for (let k = 1; k < frames; k++) {
-		last = await readLuma(dir, k);
-		sums.fill(0);
-		for (let y = 0; y < ch * CELL; y++)
-			for (let x = 0; x < cw * CELL; x++) {
-				const o = y * first.width + x;
-				const c = Math.floor(y / CELL) * cw + Math.floor(x / CELL);
-				sums[c] =
-					(sums[c] as number) +
-					Math.abs((last.data[o] as number) - (first.data[o] as number));
-			}
-		for (let c = 0; c < peak.length; c++)
-			peak[c] = Math.max(
-				peak[c] as number,
-				(sums[c] as number) / (CELL * CELL),
-			);
-	}
-	const mask = Uint8Array.from(peak, (v) => (v > floor ? 1 : 0));
-	let blobs = components(mask, cw, ch);
-	if (blobs.length > max) {
-		warnings.push(
-			`found ${blobs.length} moving blobs; kept the ${max} largest (raise maxRegions or declare regions)`,
-		);
-		blobs = blobs.slice(0, max);
-	}
-	const band = CELL * 4;
-	const rects = blobs
-		.map((b) => ({
-			x: b.x * CELL,
-			y: b.y * CELL,
-			w: b.w * CELL,
-			h: b.h * CELL,
-		}))
-		.sort(
-			(a, b) => Math.round(a.y / band) - Math.round(b.y / band) || a.x - b.x,
-		)
-		.map((r, i) => ({ name: `blob[${i}]`, ...r }));
-	return { rects, first, last };
 }

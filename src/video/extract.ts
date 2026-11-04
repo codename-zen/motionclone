@@ -171,6 +171,6 @@ export async function extractFrames(
 		sourceFrames,
 		warnings,
 	};
-	await writeVideoCaptureFile(result, { track: [], warnings });
+	await writeVideoCaptureFile(result, { track: [], warnings, clipped: [] });
 	return result;
 }

@@ -20,6 +20,10 @@ const PLACE_AGREE_PX = 3;
 const PLACE_AGREE_SHARE = 0.015;
 // Quality of a frame whose two readings disagree is scaled by this.
 const DISAGREE = 0.5;
+// A found reading stays connected to the last one: scale within this (log units) of the prediction per frame
+// since then, counting at most MAX_GAP frames, so a different element that looks alike is not taken over.
+const MAX_SCALE_STEP = 0.2;
+const MAX_GAP = 2;
 
 const predict = (s: State): Pose => ({
 	cx: s.pose.cx + s.vel.cx,
@@ -58,16 +62,26 @@ function templateFit(
 	s: State,
 	f: Frame,
 	cp: Pose | null,
+	k: number,
 ): { m: Fit; j: Judgement } {
 	const pred = predict(s);
+	const connected = (m: Fit, j: Judgement) =>
+		j.status !== "found" ||
+		s.lastK < 0 ||
+		Math.abs(Math.log(m.s / pred.s)) <=
+			MAX_SCALE_STEP * Math.min(MAX_GAP, Math.abs(k - s.lastK));
+	const judged = (m: Fit): Judgement => {
+		const j = judge(m, s.noise);
+		return connected(m, j) ? j : { ...j, status: "other" };
+	};
 	let m = search(f, s.model, cp ?? pred, s.lock);
 	if (m.contrast < MIN_SHAPE_CONTRAST)
 		m = place(f, s.model, { ...m, s: s.pose.s, blur: s.pose.blur });
-	let j = judge(m, s.noise);
+	let j = judged(m);
 	if (isFound(j.status)) return { m, j };
 	// The search may have strayed onto nearby content: judge what is at the expected place instead.
 	m = place(f, s.model, { ...pred, s: s.pose.s, blur: s.pose.blur });
-	j = judge(m, s.noise);
+	j = judged(m);
 	if (isFound(j.status) || cp) return { m, j };
 	if (j.status !== "other" && !s.prevFound) return { m, j };
 	if (s.missed && !changed(s.missed, f.coarse, s.area)) return { m, j };
@@ -79,14 +93,15 @@ function templateFit(
 		s.lock,
 		s.noise,
 	);
-	s.missed = a ? null : f.coarse;
-	return a ? { m: a.fit, j: a.judgement } : { m, j };
+	const ok = a !== null && connected(a.fit, a.judgement);
+	s.missed = ok ? null : f.coarse;
+	return ok ? { m: a.fit, j: a.judgement } : { m, j };
 }
 
 export function step(s: State, f: Frame, rgba: Rgba, k: number) {
 	const reading = s.colour ? readColour(s.colour, rgba) : null;
 	const cp = reading ? colourPose(s, reading) : null;
-	let { m, j } = templateFit(s, f, cp);
+	let { m, j } = templateFit(s, f, cp, k);
 	let { status, quality } = j;
 	let method: Method = "none";
 	let opacity = isFound(status) ? Math.min(1, Math.max(0, m.contrast)) : 0;
@@ -131,6 +146,7 @@ export function step(s: State, f: Frame, rgba: Rgba, k: number) {
 				}
 			: still;
 		s.pose = next;
+		s.lastK = k;
 	} else s.vel = still;
 	s.prevFound = found;
 }

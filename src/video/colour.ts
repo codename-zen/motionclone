@@ -91,7 +91,7 @@ const aspectGap = (a: Rect, b: Rect) =>
 	Math.abs(Math.log(a.w / a.h / (b.w / b.h)));
 
 /** Content swap: the colours are rare in the whole region at the other end. */
-function swapModel(
+export function swapModel(
 	ref: Rgba,
 	other: Rgba,
 	win: Rect,
@@ -123,8 +123,9 @@ function swapModel(
 /**
  * Persistent element: at both ends the colours form one compact patch and are rare in the rest of the region,
  * whatever its size and place; colours that only fill part of it (a pattern) join once that patch is known.
+ * Callers still have to check that the element stays visible between the ends (see colour-continuity.ts).
  */
-function persistentModel(
+export function persistentModel(
 	ref: Rgba,
 	other: Rgba,
 	win: Rect,
@@ -165,22 +166,6 @@ function persistentModel(
 		fill: at.fill,
 		otherBox: to.box,
 	};
-}
-
-/**
- * The element's distinctive colours, dominant in the reference window and away from its other dominant colours:
- * either replaced content (rare in the region at the other end) or a persistent element (one compact patch at
- * both ends, rare around it); null when they do not make up most of the box they form.
- */
-export function colourModel(
-	ref: Rgba,
-	other: Rgba,
-	win: Rect,
-	area: Rect,
-): ColourModel | null {
-	return (
-		persistentModel(ref, other, win, area) ?? swapModel(ref, other, win, area)
-	);
 }
 
 /** The element's box in a frame, or null when its colours do not form a uniformly scaled copy of it. */

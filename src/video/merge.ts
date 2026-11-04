@@ -54,11 +54,14 @@ export function mergeEnds(main: RegionTrack, other: RegionTrack): number {
 }
 
 /**
- * Express a track against the element as it appears at one end of the clip: box, scale and blur.
- * Does nothing unless that end's frame measured the scale.
+ * Express a track against the element as it appears at one of its frames: box, scale and blur.
+ * Does nothing unless that frame measured the scale.
  */
-export function rebase(t: RegionTrack, ref: "first" | "last"): void {
-	const k = ref === "first" ? 0 : t.samples.length - 1;
+export function rebase(
+	t: RegionTrack,
+	k: number,
+	label: RegionTrack["ref"],
+): void {
 	const at = t.samples[k] as RegionSample;
 	if (at.status !== "found") return;
 	const s0 = at.scale;
@@ -78,5 +81,5 @@ export function rebase(t: RegionTrack, ref: "first" | "last"): void {
 			blur: p.blur * s0,
 		});
 	}
-	Object.assign(t, { box, ref });
+	Object.assign(t, { box, ref: label, refFrame: k });
 }

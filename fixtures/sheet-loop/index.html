@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>sheet-loop</title>
+<style>
+  html { margin: 0; overflow: hidden; }
+  body { margin: 0; width: 600px; height: 1032px; overflow: hidden; position: relative; font-family: system-ui, sans-serif; background: #fff;
+    animation: dark 300ms cubic-bezier(0.33, 1, 0.68, 1) 400ms forwards, light 300ms cubic-bezier(0.33, 1, 0.68, 1) 2300ms forwards,
+      dark 300ms cubic-bezier(0.33, 1, 0.68, 1) 4400ms forwards, light 300ms cubic-bezier(0.33, 1, 0.68, 1) 6300ms forwards; }
+  @keyframes dark { from { background-color: #fff; } to { background-color: #111114; } }
+  @keyframes light { from { background-color: #111114; } to { background-color: #fff; } }
+
+  .top { position: absolute; left: 32px; top: 30px; color: #8a8a90; font-size: 22px; font-weight: 600; }
+  .top span { display: block; font-size: 15px; font-weight: 500; margin-top: 4px; }
+
+  /* Revealed when the sheet slides down: light content on the dark page. */
+  .summary { position: absolute; left: 32px; top: 140px; width: 536px; color: #f2f2f5; }
+  .summary b { display: block; font-size: 64px; font-weight: 700; }
+  .summary i { display: block; font-style: normal; font-size: 20px; color: #9c9ca6; margin-top: 4px; }
+  .bars { display: flex; gap: 18px; align-items: flex-end; height: 150px; margin-top: 36px; }
+  .bars div { width: 56px; border-radius: 10px; background: #7dd3a8; }
+
+  /* Each slide adds its own move, so the four moves are four animations. */
+  .sheet { position: absolute; left: 0; top: 96px; width: 600px; height: 1400px; border-radius: 28px 28px 0 0; background: #fff; color: #1d1d22;
+    animation: down 300ms cubic-bezier(0.33, 1, 0.68, 1) 400ms forwards, up 300ms cubic-bezier(0.33, 1, 0.68, 1) 2300ms forwards,
+      down 300ms cubic-bezier(0.33, 1, 0.68, 1) 4400ms forwards, up 300ms cubic-bezier(0.33, 1, 0.68, 1) 6300ms forwards;
+    animation-composition: add; }
+  @keyframes down { from { translate: 0 0; } to { translate: 0 440px; } }
+  @keyframes up { from { translate: 0 0; } to { translate: 0 -440px; } }
+  .grip { position: absolute; left: 280px; top: 10px; width: 40px; height: 5px; border-radius: 3px; background: #c9c9cf; }
+  .week { position: absolute; left: 20px; top: 30px; display: flex; gap: 8px; }
+  .day { width: 72px; height: 76px; border-radius: 18px; text-align: center; font-size: 15px; color: #8a8a90; }
+  .day b { display: block; margin: 8px auto 0; width: 38px; height: 38px; line-height: 38px; border-radius: 50%; font-size: 19px; color: #1d1d22; }
+  .day.on b { background: #f0643c; color: #fff; }
+  .task { position: absolute; left: 24px; width: 552px; height: 64px; border-bottom: 1px solid #ececf0; }
+  .task .tick { position: absolute; left: 4px; top: 18px; width: 24px; height: 24px; border-radius: 50%; border: 3px solid #c4c4cc; box-sizing: border-box; }
+  .task.done .tick { background: #3fb37f; border-color: #3fb37f; }
+  .task p { position: absolute; left: 48px; top: 10px; margin: 0; font-size: 19px; }
+  .task small { position: absolute; left: 48px; top: 36px; font-size: 14px; color: #8a8a90; }
+  .task em { position: absolute; right: 4px; top: 20px; font-style: normal; font-size: 13px; padding: 3px 10px; border-radius: 10px; color: #fff; }
+</style>
+</head>
+<body>
+  <div class="top">Planner<span>Week 46</span></div>
+  <div class="summary"><b>6 of 9</b><i>tasks done this week</i>
+    <div class="bars"><div style="height: 60px"></div><div style="height: 120px"></div><div style="height: 90px"></div><div style="height: 150px"></div><div style="height: 40px"></div><div style="height: 100px"></div><div style="height: 70px"></div></div>
+  </div>
+  <div class="sheet">
+    <div class="grip"></div>
+    <div class="week">
+      <div class="day">M<b>10</b></div><div class="day">T<b>11</b></div><div class="day on">W<b>12</b></div><div class="day">T<b>13</b></div>
+      <div class="day">F<b>14</b></div><div class="day">S<b>15</b></div><div class="day">S<b>16</b></div>
+    </div>
+    <div class="task done" style="top: 124px"><div class="tick"></div><p>Water the plants</p><small>08:00</small><em style="background: #3fb37f">home</em></div>
+    <div class="task done" style="top: 188px"><div class="tick"></div><p>Send the draft</p><small>09:30</small><em style="background: #5b7cfa">work</em></div>
+    <div class="task" style="top: 252px"><div class="tick"></div><p>Call the bakery</p><small>11:00</small><em style="background: #e8a33d">errand</em></div>
+    <div class="task" style="top: 316px"><div class="tick"></div><p>Review pull request</p><small>13:15</small><em style="background: #5b7cfa">work</em></div>
+    <div class="task done" style="top: 380px"><div class="tick"></div><p>Run 5 km</p><small>17:00</small><em style="background: #c25bd6">health</em></div>
+    <div class="task" style="top: 444px"><div class="tick"></div><p>Book train tickets</p><small>18:30</small><em style="background: #e8a33d">errand</em></div>
+    <div class="task" style="top: 508px"><div class="tick"></div><p>Read two chapters</p><small>21:00</small><em style="background: #3fb37f">home</em></div>
+    <div class="task" style="top: 572px"><div class="tick"></div><p>Plan the weekend</p><small>21:30</small><em style="background: #3fb37f">home</em></div>
+    <div class="task" style="top: 636px"><div class="tick"></div><p>Stretch</p><small>22:00</small><em style="background: #c25bd6">health</em></div>
+    <div class="task" style="top: 700px"><div class="tick"></div><p>Pack the gym bag</p><small>22:15</small><em style="background: #c25bd6">health</em></div>
+    <div class="task" style="top: 764px"><div class="tick"></div><p>Charge the bike lights</p><small>22:30</small><em style="background: #e8a33d">errand</em></div>
+    <div class="task" style="top: 828px"><div class="tick"></div><p>Lights out</p><small>23:00</small><em style="background: #3fb37f">home</em></div>
+  </div>
+</body>
+</html>

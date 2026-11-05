@@ -87,8 +87,10 @@ export interface TrackedElement {
 	quality?: number;
 	/** Video tracks only: which values were measured on this frame; the others are filled in. */
 	observed?: ObservedValues;
-	/** Video tracks only: the region cut the element's travel on this frame (ADR 0002). */
+	/** Video tracks only: the region or the frame edge cut the element's travel on this frame (ADR 0002). */
 	clipped?: boolean;
+	/** Video tracks only: the recording repeats the frame before here, so nothing on it is a reading (ADR 0002). */
+	repeated?: boolean;
 	/** Video tracks only: light and dark around the element are swapped against its reference frame (ADR 0002). */
 	flipped?: boolean;
 }

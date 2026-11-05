@@ -2,7 +2,6 @@ import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Page } from "playwright";
 import type { CaptureOptions, ClipRect } from "./options.ts";
-import type { TrackedElement } from "./types.ts";
 
 export async function resolveCrop(
 	page: Page,
@@ -62,28 +61,4 @@ export async function writeFrame(
 		png,
 	);
 	return png;
-}
-
-// Reports each tracked element once, at the first frame its box is not fully inside the crop.
-export function createCropWatcher(crop: ClipRect, warnings: string[]) {
-	const reported = new Set<string>();
-	return (t: number, elements: Record<string, TrackedElement[]>): void => {
-		for (const [sel, list] of Object.entries(elements)) {
-			for (const e of list) {
-				const key = `${sel}[${e.index}]`;
-				if (reported.has(key) || e.w === 0 || e.h === 0) continue;
-				const inside =
-					e.x >= crop.x &&
-					e.y >= crop.y &&
-					e.x + e.w <= crop.x + crop.width &&
-					e.y + e.h <= crop.y + crop.height;
-				if (!inside) {
-					reported.add(key);
-					warnings.push(
-						`tracked element ${key} is outside the crop at t=${t}ms`,
-					);
-				}
-			}
-		}
-	};
 }

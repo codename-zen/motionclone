@@ -47,9 +47,11 @@ async function capture(args: string[]): Promise<number> {
 			"leave",
 			"click",
 			"scroll",
+			"drag",
 		]),
 		target: v.target,
 		scrollTo: v["scroll-to"],
+		drag: v.drag,
 		track: v.track
 			?.split(",")
 			.map((s) => s.trim())

@@ -8,8 +8,10 @@ import type { CaptureSummary } from "../capture/types.ts";
 import { type CaptureFile, readCaptureFile } from "../spec/capture-file.ts";
 import { isVideoCapture } from "../verify/setup.ts";
 import { framePng } from "../video/luma.ts";
+import { dragPathOf } from "./drag-path.ts";
+import { UsageError } from "./usage-error.ts";
 
-export class UsageError extends Error {}
+export { dragPathOf, UsageError };
 
 /** Flat capture arguments shared by the CLI flags and the MCP capture tool. */
 export const CaptureArgs = z.object({
@@ -28,17 +30,23 @@ export const CaptureArgs = z.object({
 		.optional()
 		.describe("Capture length in ms after the trigger"),
 	trigger: z
-		.enum(["load", "none", "hover", "leave", "click", "scroll"])
+		.enum(["load", "none", "hover", "leave", "click", "scroll", "drag"])
 		.optional()
 		.describe("What starts the motion, default load"),
 	target: z
 		.string()
 		.optional()
-		.describe("CSS selector for hover, leave and click"),
+		.describe("CSS selector for hover, leave, click and drag"),
 	scrollTo: z
 		.string()
 		.optional()
 		.describe("Scroll trigger destination: pixels or a CSS selector"),
+	drag: z
+		.string()
+		.optional()
+		.describe(
+			'Drag trigger path: points "x,y@ms" separated by spaces, CSS px from the centre of the target and ms after the trigger; the pointer goes down at the first point, moves on every frame and goes up at the last, e.g. "0,0@500 0,300@1300"',
+		),
 	track: z
 		.array(z.string())
 		.optional()
@@ -128,6 +136,11 @@ export function numbers(
 
 function triggerOf(a: CaptureArgs): CaptureInput["trigger"] | undefined {
 	if (!a.trigger) return undefined;
+	if (a.trigger === "drag") {
+		if (!a.target || !a.drag)
+			throw new UsageError("--trigger drag needs --target and --drag");
+		return { type: "drag", target: a.target, path: dragPathOf(a.drag) };
+	}
 	if (a.trigger === "scroll") {
 		if (a.scrollTo === undefined)
 			throw new UsageError("--trigger scroll needs --scroll-to");

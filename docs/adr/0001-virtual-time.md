@@ -37,6 +37,8 @@ Each scroll step sets the position with `window.scrollTo({ behavior: "instant" }
 `scrollY` changes at once, but scroll timelines and scroll events only catch up at the next rendering update, which Chromium schedules in real time.
 Without a wait, the tracker sometimes read the previous step's scroll-driven values, so track.json and self-verify differed between runs.
 The step therefore waits for one rendering update (the first callback of an IntersectionObserver, delivered after it) before the frame is sampled.
+The drag trigger is planned the same way: pointer down at its first point, one `page.mouse.move` at each frame time between, on the path drawn in straight lines, and pointer up at its last point.
+Each step runs after `runFor` reaches its frame, so the page sees the pointer where the path is at that frame's virtual time, and two captures of one drag are identical.
 Frame times are whole milliseconds (`round(k * 1000 / fps)`) so timers fire at the same points every run.
 `Math.random` is replaced with a seeded mulberry32.
 

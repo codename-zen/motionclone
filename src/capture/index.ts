@@ -2,10 +2,13 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
 import { createLookRecorder } from "../look/capture.ts";
+import { readTrack } from "../measure/elements.ts";
+import { readCaptureFile } from "../spec/capture-file.ts";
 import { openSession } from "./browser.ts";
 import { startCdpRecorder } from "./cdp-animations.ts";
 import { createVirtualClock, installClock } from "./clock.ts";
-import { createCropWatcher, resolveCrop, writeFrame } from "./frames.ts";
+import { type CropReference, cropWarnings } from "./crop-watch.ts";
+import { resolveCrop, writeFrame } from "./frames.ts";
 import { mergeAnimations } from "./merge-animations.ts";
 import {
 	type CaptureInput,
@@ -85,6 +88,22 @@ function planTimeline(opts: CaptureOptions, warnings: string[]): Timeline {
 	};
 }
 
+/** The recording a clone copies with --like, when it can be read; its elements tell which leave the screen there. */
+async function likeReference(
+	like: CaptureOptions["likeVideo"],
+): Promise<CropReference | null> {
+	if (!like) return null;
+	try {
+		const [track, cap] = await Promise.all([
+			readTrack(like.capture),
+			readCaptureFile(like.capture),
+		]);
+		return { track, clip: cap.clip };
+	} catch {
+		return null;
+	}
+}
+
 export async function captureMotion(
 	input: CaptureInput,
 ): Promise<CaptureSummary> {
@@ -128,7 +147,6 @@ export async function captureMotion(
 
 		// Fixed once, before the first recorded frame: the pre-roll is idle by design, so this equals the trigger-time box.
 		const crop = await resolveCrop(page, opts.clip, opts.viewport, warnings);
-		const watchCrop = createCropWatcher(crop, warnings);
 		const look = createLookRecorder(page, opts, crop);
 		const frames: TrackFrame[] = [];
 		const truncatedSelectors = new Set<string>();
@@ -138,7 +156,12 @@ export async function captureMotion(
 			const t = tl.timeAt(k);
 			await clock.advanceTo(tl.triggerAtMs + t, t);
 			if (k === 0)
-				actions = await planTrigger(page, opts.trigger, opts.viewport);
+				actions = await planTrigger(
+					page,
+					opts.trigger,
+					opts.viewport,
+					Array.from({ length: tl.frames }, (_, j) => tl.timeAt(j)),
+				);
 			const due = actions.filter((a) => a.atMs <= t);
 			if (due.length > 0) {
 				actions = actions.filter((a) => a.atMs > t);
@@ -153,7 +176,6 @@ export async function captureMotion(
 					`selector ${sel} matched ${count} elements; only the first ${MAX_MATCHES_PER_SELECTOR} are tracked`,
 				);
 			}
-			watchCrop(t, sample.elements);
 			const frame = k + tl.preFrames;
 			frames.push({
 				frame,
@@ -167,6 +189,9 @@ export async function captureMotion(
 				await writeFrame(page, crop, framesDir, frame),
 			);
 		}
+		warnings.push(
+			...cropWarnings(frames, crop, await likeReference(opts.likeVideo)),
+		);
 		await look.finish(outDir, frames, warnings);
 		if (actions.length > 0)
 			warnings.push(

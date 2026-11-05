@@ -17,6 +17,7 @@ const PAGE_ONLY: (keyof CaptureArgs)[] = [
 	"trigger",
 	"target",
 	"scrollTo",
+	"drag",
 	"track",
 	"clip",
 	"selector",

@@ -7,6 +7,13 @@ const Rect = z.object({
 	height: z.number().positive(),
 });
 
+/** A point of a drag path: CSS px from the target's centre, ms after the trigger. */
+export const DragPoint = z.object({
+	x: z.number(),
+	y: z.number(),
+	atMs: z.number().nonnegative(),
+});
+
 export const Trigger = z.discriminatedUnion("type", [
 	z.object({ type: z.literal("load") }),
 	z.object({ type: z.literal("none") }),
@@ -17,6 +24,20 @@ export const Trigger = z.discriminatedUnion("type", [
 	}),
 	z.object({ type: z.literal("leave"), target: z.string() }),
 	z.object({ type: z.literal("click"), target: z.string() }),
+	// Press at the first point, move through the others on every frame, release at the last.
+	z.object({
+		type: z.literal("drag"),
+		target: z.string(),
+		path: z
+			.array(DragPoint)
+			.min(2)
+			.refine(
+				(p) => p.every((q, i) => i === 0 || q.atMs > (p[i - 1]?.atMs ?? 0)),
+				{
+					message: "drag path times must increase from point to point",
+				},
+			),
+	}),
 	z
 		.object({
 			type: z.literal("scroll"),
@@ -81,6 +102,7 @@ export type CaptureInput = z.input<typeof CaptureOptions>;
 export type CaptureOptions = z.output<typeof CaptureOptions>;
 export type TriggerOptions = z.output<typeof Trigger>;
 export type ClipRect = z.output<typeof Rect>;
+export type DragPoint = z.output<typeof DragPoint>;
 
 export const DEFAULT_PRE_ROLL_MS = 200;
 export const DEFAULT_WAIT_BEFORE_MS = 500;

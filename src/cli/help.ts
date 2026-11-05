@@ -26,9 +26,11 @@ export const HELP: Record<string, string> = {
   --viewport WxH          Default 1280x800
   --fps <n>               Default 60
   --duration <ms>         Capture length after the trigger (required without --like)
-  --trigger <type>        load | none | hover | leave | click | scroll (default load)
-  --target <css>          Element for hover, leave, click
+  --trigger <type>        load | none | hover | leave | click | scroll | drag (default load)
+  --target <css>          Element for hover, leave, click, drag
   --scroll-to <px|css>    Destination for the scroll trigger
+  --drag "x,y@ms ..."     Path for the drag trigger: CSS px from the target's centre at ms after
+                          the trigger; press at the first point, release at the last
   --track "css, css"      Selectors tracked every frame
   --clip x,y,w,h          Crop rectangle
   --selector <css>        Crop around this element

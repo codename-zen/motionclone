@@ -10,6 +10,7 @@ export const CAPTURE_FLAGS = {
 	trigger: { type: "string" },
 	target: { type: "string" },
 	"scroll-to": { type: "string" },
+	drag: { type: "string" },
 	track: { type: "string" },
 	clip: { type: "string" },
 	selector: { type: "string" },

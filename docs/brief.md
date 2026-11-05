@@ -27,7 +27,7 @@ The rebuild is the user's own code; the tool never ships someone else's assets.
 | Spec schema     | zod, `spec.json` is the contract                                                      |
 | Tests           | vitest + fixture pages                                                                |
 | Lint and format | Biome                                                                                 |
-| Agent access    | CLI, MCP server (`motionclone mcp`), thin agent skill                                   |
+| Agent access    | CLI, MCP server (`motionclone mcp`), thin agent skill                                 |
 | Package manager | pnpm                                                                                  |
 
 ## Architecture

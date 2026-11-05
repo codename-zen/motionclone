@@ -185,7 +185,10 @@ function suite(label: string, entry: string, runIf: boolean) {
 				);
 				expect(json.code).toBe(1);
 				expect(JSON.parse(json.stdout).summary.failed).toBeGreaterThan(0);
-				const rep = await motionclone("report", join(dir("out"), "verdict.json"));
+				const rep = await motionclone(
+					"report",
+					join(dir("out"), "verdict.json"),
+				);
 				expect(rep.stdout).toContain("# motionclone verify: FAIL");
 			},
 			E2E_TIMEOUT,

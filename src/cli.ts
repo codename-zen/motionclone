@@ -31,7 +31,11 @@ function help(command?: string): number {
 async function capture(args: string[]): Promise<number> {
 	const { values: v, positionals: p } = parse(args, CAPTURE_FLAGS);
 	if (v.help) return help("capture");
-	const [url] = exactly(p, 1, "motionclone capture <url|path|video> --out <dir>");
+	const [url] = exactly(
+		p,
+		1,
+		"motionclone capture <url|path|video> --out <dir>",
+	);
 	if (!v.out) throw new UsageError("--out <dir> is required");
 	const input: CaptureArgs = {
 		url: url as string,
@@ -149,7 +153,8 @@ async function sideBySideCmd(args: string[]): Promise<number> {
 	const { values: v, positionals: p } = parse(args, SIDE_BY_SIDE_FLAGS);
 	if (v.help) return help("side-by-side");
 	const [refDir, ...cloneDirs] = p;
-	const usage = "motionclone side-by-side <refDir> <cloneDir>... --out file.gif";
+	const usage =
+		"motionclone side-by-side <refDir> <cloneDir>... --out file.gif";
 	if (!refDir || cloneDirs.length === 0)
 		throw new UsageError(
 			`expected a reference and a clone directory: ${usage}`,

@@ -84,10 +84,17 @@ const BOX_PROPERTIES = new Set<Property>(["x", "y", "width", "height"]);
 export const lost = (el: TrackedElement): boolean =>
 	el.observed !== undefined && !el.observed.position && !el.observed.opacity;
 
+/** A video tracker did not measure this scale or blur on this frame: it is filled in from other frames. */
+const unseenShape = (el: TrackedElement, property: Property): boolean =>
+	property === "blur"
+		? el.observed?.blur === false
+		: property.startsWith("scale") && el.observed?.scale === false;
+
 /**
  * One value per frame for a tracked element; rotation is unwrapped so 359 to 1 degrees is a 2 degree move.
  * Video boxes on frames where the tracker lost the element after first finding it are left out: they are
- * interpolated, not seen. Leading ones stay, as the extrapolated start (ADR 0003).
+ * interpolated, not seen. So are scale and blur the tracker filled in after it first measured them. Leading ones
+ * stay, as the extrapolated start (ADR 0003).
  */
 export function extractSeries(
 	frames: readonly TrackFrame[],
@@ -102,7 +109,10 @@ export function extractSeries(
 	for (const frame of frames) {
 		const el = frame.elements[selector]?.find((e) => e.index === index);
 		if (!el) continue;
-		if (BOX_PROPERTIES.has(property) && lost(el)) {
+		const missing = BOX_PROPERTIES.has(property)
+			? lost(el)
+			: unseenShape(el, property);
+		if (missing) {
 			if (found) continue;
 		} else found = true;
 		let value = readProperty(el, property);

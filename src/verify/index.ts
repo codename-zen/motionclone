@@ -1,6 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { readTrack } from "../measure/elements.ts";
+import { readTrack, type Track } from "../measure/elements.ts";
 import { withCloneEdges } from "../pixel/clone-edges.ts";
 import { frameRegion } from "../pixel/region.ts";
 import { readAnimations, readCaptureFile } from "../spec/capture-file.ts";
@@ -77,12 +77,21 @@ async function loadSpec(spec: string | SpecFile): Promise<SpecFile> {
 }
 
 /** Verify a clone capture against a spec drafted from the reference capture. */
-export async function verify(
+export const verify = async (
 	specFile: string | SpecFile,
 	refDir: string,
 	cloneDir: string,
 	opts: VerifyOptions = {},
-): Promise<Verdict> {
+): Promise<Verdict> =>
+	(await verifyMeasured(specFile, refDir, cloneDir, opts)).verdict;
+
+/** The verdict and the clone track as it was measured: --map names and surface edges; null after setup errors. */
+export async function verifyMeasured(
+	specFile: string | SpecFile,
+	refDir: string,
+	cloneDir: string,
+	opts: VerifyOptions = {},
+): Promise<{ verdict: Verdict; cloneTrack: Track | null }> {
 	const fidelity = opts.fidelity ?? "motion";
 	const ref = resolve(refDir);
 	const clone = resolve(cloneDir);
@@ -107,6 +116,7 @@ export async function verify(
 	let pixel: Verdict["pixel"] = null;
 	let coverage: Coverage | null = null;
 	let look: Verdict["look"] = null;
+	let measuredTrack: Track | null = null;
 	if (errors.length === 0) {
 		const renamed = await withCloneEdges(
 			clone,
@@ -114,7 +124,9 @@ export async function verify(
 			cloneCap.clip,
 			refTrack,
 			refCap.clip,
+			opts.outDir === false ? null : (opts.outDir ?? clone),
 		);
+		measuredTrack = renamed;
 		const idx = indexClone(renamed, renameAnimations(cloneAnimations, map));
 		// Video distances are CSS px; the region box and the element box differ in size, so a relative distance would not compare.
 		const specRows = video
@@ -236,5 +248,5 @@ export async function verify(
 	});
 	if (opts.outDir !== false)
 		await writeFile(join(opts.outDir ?? clone, "verdict.json"), json(verdict));
-	return verdict;
+	return { verdict, cloneTrack: measuredTrack };
 }

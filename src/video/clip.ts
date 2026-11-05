@@ -8,15 +8,29 @@ const MOVING = 0.5;
 
 /**
  * How far the box reaches past the region on its worst side; negative while it stays inside. Sides where the
- * region ends at the frame edge do not count: there the frame cuts the content, not the region.
+ * region ends at the frame edge do not count: there the frame cuts the content, not the region. With `towards`,
+ * only the sides the element moves towards count.
  */
-export function overreach(b: Rect, r: Rect, frame: Rect): number {
+export function overreach(
+	b: Rect,
+	r: Rect,
+	frame: Rect,
+	towards: { x: number; y: number } | null = null,
+): number {
 	const none = Number.NEGATIVE_INFINITY;
+	const side = (on: boolean, v: number) => (on ? v : none);
+	const all = towards === null;
 	return Math.max(
-		r.x > frame.x ? r.x - b.x : none,
-		r.y > frame.y ? r.y - b.y : none,
-		r.x + r.w < frame.x + frame.w ? b.x + b.w - (r.x + r.w) : none,
-		r.y + r.h < frame.y + frame.h ? b.y + b.h - (r.y + r.h) : none,
+		side(r.x > frame.x && (all || towards.x < 0), r.x - b.x),
+		side(r.y > frame.y && (all || towards.y < 0), r.y - b.y),
+		side(
+			r.x + r.w < frame.x + frame.w && (all || towards.x > 0),
+			b.x + b.w - (r.x + r.w),
+		),
+		side(
+			r.y + r.h < frame.y + frame.h && (all || towards.y > 0),
+			b.y + b.h - (r.y + r.h),
+		),
 	);
 }
 
@@ -25,15 +39,23 @@ const centre = (t: RegionTrack, p: RegionSample) => ({
 	y: t.box.y + t.box.h / 2 + p.dy,
 });
 
-function moving(t: RegionTrack, k: number): boolean {
+/**
+ * The centre's motion between frame k and a found neighbour, when it moves more than MOVING; else null. Components
+ * under MOVING are jitter across the motion and read as 0.
+ */
+function motion(t: RegionTrack, k: number): { x: number; y: number } | null {
 	const p = t.samples[k] as RegionSample;
-	return [k - 1, k + 1].some((j) => {
+	for (const j of [k - 1, k + 1]) {
 		const q = t.samples[j];
-		if (!q?.found) return false;
+		if (!q?.found) continue;
 		const a = centre(t, p);
 		const b = centre(t, q);
-		return Math.hypot(a.x - b.x, a.y - b.y) > MOVING;
-	});
+		const d =
+			j > k ? { x: b.x - a.x, y: b.y - a.y } : { x: a.x - b.x, y: a.y - b.y };
+		const along = (v: number) => (Math.abs(v) > MOVING ? v : 0);
+		if (Math.hypot(d.x, d.y) > MOVING) return { x: along(d.x), y: along(d.y) };
+	}
+	return null;
 }
 
 /**
@@ -49,8 +71,11 @@ export function markClipped(
 	const ranges: { from: number; to: number }[] = [];
 	t.samples.forEach((p, k) => {
 		if (!p.found) return;
-		const over = overreach(sampleBox(t.box, p), region, frame);
-		if (!(over > TOUCH || (over > -TOUCH && moving(t, k)))) return;
+		const box = sampleBox(t.box, p);
+		const d = motion(t, k);
+		// A box that touches a side clips the travel only while it moves towards that side.
+		const touching = d !== null && overreach(box, region, frame, d) > -TOUCH;
+		if (!(overreach(box, region, frame) > TOUCH || touching)) return;
 		// Frames lost next to a clipped one are where the element left the region.
 		let from = k;
 		let to = k;

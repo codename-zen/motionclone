@@ -393,6 +393,49 @@ On a synthetic recording (a 390x600 CSS px screen at 1.5x inside a black bezel, 
 On the user's 1920x1080 recording, 56 fps and 8 s, `probe --screen` takes about 6 s and finds the screen at 659,51 601x1029 (edges left, right and top; the bottom runs off the frame), suggests `--crop 659,51,600,1029 --css-scale 1.5` (400x686 CSS px), and lists the four slides at 0.63-1.05, 2.59-3.00, 4.77-5.16 and 6.96-7.43 s.
 A static, uniform band inside the screen that matches the bezel colour, or a screen with no visible edge against its background, can still mislead the guess; the output says when it is unsure.
 
+## Decision: regions over a whole travel, the frame edge and repeated frames
+
+Two user benchmarks showed a rebuild close to its reference while the tracker misread it.
+On a phone recording of a split view (a dark toolbar strip dragged between a calendar card and a todo card) a region over the strip's whole travel became a 380x514 template of both cards and found the strip on 60 of 537 frames.
+On a desktop recording of sidebars, a toolbar of pills moved 314 CSS px in about ten frames inside a region only one pixel taller than the pills, and was never found again after the first frame of the move.
+
+Wide search: placements are tried wherever the template's centre lies in the region, not only where the whole template fits, and the last clear scale is always one of the scales tried.
+Before, a region barely taller than its element had no placement at all at the levels the wide search uses, and a scale ladder that stepped past 1 never tried the element's own size.
+
+Regions planned again from travel: when the first plan of a region not already planned from travel finds its element on under half of the frames, and most of the other frames show something that is not the element (status `other`, not `absent`), the region is planned from the rest states it shows.
+An element that is simply not there yet, such as notch art that fades in, keeps its first plan: planned from travel, the art was taken for the thumbnail it replaces.
+Of its distinct rest states (at most 8, in clip order), the pair between which content travels furthest and stays in the region at both becomes the two anchors, and that content is tracked as a rigid move (see rest plateaus and surfaces that blend into the background).
+The new track is kept when it finds the element on more frames.
+Travel needs blocks that fit the region: a region thinner than 96 frame pixels is searched thickened about its centre, and the element box is cut back to the region, which must hold it at both anchors.
+When a region is planned again this way and no 64 px block votes (a toolbar between two panels whose content changes, so every large block straddles changing content), 32 px blocks vote at quarter resolution, at half-block steps, and the displacement is refined on the blocks that match at 0.95 or more.
+Of neighbourhoods with as many votes, the displacement with the most votes of its own wins.
+Used for every region, the smaller blocks found a travel between a notch thumbnail and the art that replaces it, so they are kept to this second plan.
+
+The frame edge: an element may hang past the frame by up to half its window on each axis; the part inside is scored against its own mean.
+Such a frame is cut: the element carries `clipped: true`, so its rows have a lower-bound distance, but its position stays observed, because the region did not cut it.
+A side of the region counts for clipped travel only while the element moves towards it by more than half a pixel a frame, so a thin region drawn along a row of icons does not clip their slide.
+
+Unobserved frames: the series of scale and blur leave out values the tracker filled in after it first measured them, as positions already did (ADR 0003).
+Series are cut at rests as before, but a motion between rests also counts when it travels four rest tolerances from one rest to the next (12 % of the series' range), and when it runs into or out of a gap without readings, two (6 %); a swing cut off by a rest no longer joins the motion after it.
+Before, a smaller later motion was dropped and the series came back whole, so a toolbar that moved 314, 73 and 73 px drafted no plausible row, and a strip seen for one frame after a gap was joined with its next drag into "start 3026 ms, 2057 ms".
+
+Repeated frames: a frame whose region changes by at most a quarter as much as on the frames before and after it, both at least one luma level, while the element moves on in the same direction on both sides, repeats the frame before it.
+It is not a reading: none of its values is observed, and it carries `repeated: true` in `track.json`.
+A turn (an overshoot) reverses direction and is never marked.
+
+Surface edges are followed: on each frame the candidate of the same kind (a step lighter on the same side, or a divider line) nearest to its prediction.
+An edge that rode on the element on its last step is predicted to go on riding or to stay where it was (a trailing panel edge), within 3 CSS px; one that moved apart from it is predicted from the element and from its own speed, with half that relative motion as slack.
+Steps of 12 levels continue an edge that a 24-level step started, so it does not flicker to a neighbouring edge when its contrast dips.
+Without two readings at most three frames apart, it starts again at the strong edge nearest the element's box.
+Frames where the tracker lost the element, and repeated frames, read no edge.
+Thin divider lines count as edges: at most 4 px wide, at least 6 levels from both sides, which agree, on three quarters of the lines; they are used when they are what lies nearest the element at rest.
+An edge also belongs to the element when it sweeps across it: it travels at least twice as far as the element and over half its size, and lies across the element's box on three quarters of the frames where it moves.
+That is a panel revealing or covering content that stays in place.
+Before the edge first shows, it holds its first position unobserved, so its first row is partly observed; a held rest position must come from a frame where the element had not left its rest.
+`verify` writes the clone's edge readings to `clone-edges.json`.
+
+Synthetic tests reproduce each case: a strip that slides between a growing card and a cross-fading card, followed on more than 54 of 60 frames (29 before, none of them during the slide); a template half out of the frame scoring 0.99; a 120x40 element found 520 px away in a region 54 px tall; a 314, 73 and 73 px series cut into three motions; a dipping edge with a neighbour 17 px away read on its own place on every frame it shows; a hairline 10 levels darker than white found as one line; a repeated frame marked and a turn left alone.
+
 ## Limits
 
 - Uniform scale and Gaussian blur only: rotation, non-uniform scale, perspective and clip-path changes lower the correlation and are not measured; they read as reduced opacity or a lost element.
@@ -413,7 +456,9 @@ A static, uniform band inside the screen that matches the bezel colour, or a scr
   ADR 0003 covers how spec drafting and verify now handle such partly observed rows.
 - The opacity proxy also reads the context ring around the element, so a background that changes around an opaque element lowers it: on expand-in-grid the first template frame under the fading dim reads 0.90, and the draft holds an opacity row from 0.9 to 1 that the page does not have.
 - Colour-only changes are invisible to the tracker, because it works on luma and ignores brightness scaling.
-- A surface edge is found only where it steps by 24 luma levels or more against what is around it; a white sheet on a white page shows no edge, and its position at rest is held as described above or left empty.
+- A surface edge is found only where it steps by 24 luma levels or more against what is around it, or is a divider line of 6 levels or more; a white sheet on a white page shows no edge, and its position at rest is held as described above or left empty.
+- An edge is looked for only around an element that moves at least 8 CSS px, so content that stays exactly in place gets no edge when a panel reveals it.
+- A motion that the recording shows only in fast frames where the element fades or morphs (a toolbar that turns into a floating pill) is lost, not measured.
 - A surface edge seen only while it moves has rows only for what shows; its motion behind a page switch is not seen.
 - When a surface also leaves an element's box during a fade on a flipped backdrop, the fade gets no progress row and keeps only the tracker's opacity row.
 - The colour box assumes a sharp, opaque element: blur or fading erodes its edges, so the reading shrinks or fails, and an element whose colours also appear elsewhere in the region, or that is partly covered, has no valid colour reading.

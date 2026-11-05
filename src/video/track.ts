@@ -4,9 +4,11 @@ import { markLost } from "./lost.ts";
 import { readFrame, readLuma } from "./luma.ts";
 import { pyramid } from "./match.ts";
 import { mergeEnds, rebase } from "./merge.ts";
+import { travelPlans } from "./over-travel.ts";
 import { type Done, frameSource, runPass } from "./pass.ts";
 import { type Plans, planRegion } from "./plan.ts";
 import { scaleInverted } from "./polarity.ts";
+import { markRepeats } from "./repeats.ts";
 import type { RegionSample, RegionTrack } from "./samples.ts";
 import type { Scan } from "./scan.ts";
 import type { Lock } from "./search.ts";
@@ -88,32 +90,28 @@ function anchorReader(dir: string, frames: number) {
 	return { at, done };
 }
 
+interface Context {
+	frames: number;
+	pass: (states: State[], done?: Done) => Promise<void>;
+}
+
+// A region whose element was found on fewer frames than this share is planned again from travel.
+const POOR = 0.5;
+
+// A region planned from travel holds the same element at the same size at both anchors: a rigid move.
+const free = (p: RegionPlan): Lock => ({ scale: p.bounded, blur: p.bounded });
+
 /**
- * Track each region from its reference frame, and from its other anchor when frames were lost, then merge the
- * two. When the reference is automatic, the anchor whose track found more frames leads.
+ * Track regions from their main plans, and from their other anchors when frames were lost, then merge the two.
+ * When the reference is automatic, the anchor whose track found more frames leads.
  * Regions where scale or blur stays within noise are tracked again with it fixed.
  */
-export async function trackRegions(
-	dir: string,
-	scan: Scan,
+async function follow(
+	ctx: Context,
 	regions: TrackRegionInput[],
-	floor: number,
-	warnings: string[],
-): Promise<RegionTrack[]> {
-	const frames = scan.frames;
-	const frame = { x: 0, y: 0, w: scan.first.width, h: scan.first.height };
-	const anchors = anchorReader(dir, frames);
-	const plans: Plans[] = [];
-	for (const r of regions)
-		plans.push(await planRegion(dir, r, scan, anchors.at, floor));
-	const source = frameSource((k) => readFrame(dir, k), anchors.done);
-	const pass = (states: State[], done?: Done) =>
-		runPass(frames, states, source, scan.first, floor, done);
-	// A region planned from travel holds the same element at the same size at both anchors: a rigid move.
-	const free = (p: RegionPlan): Lock => ({
-		scale: p.bounded,
-		blur: p.bounded,
-	});
+	plans: Plans[],
+): Promise<{ main: State[]; used: RegionPlan[] }> {
+	const { frames, pass } = ctx;
 	const init = (i: number, plan: RegionPlan, lock: Lock) =>
 		initState(regions[i] as TrackRegionInput, plan, frames, lock);
 	const used = plans.map((p) => p.main);
@@ -155,6 +153,48 @@ export async function trackRegions(
 	for (const [i, o] of others) mergeEnds((main[i] as State).region, o.region);
 	for (const [i, t] of measuredAt)
 		rebase((main[i] as State).region, t.refFrame, t.ref);
+	return { main, used };
+}
+
+/**
+ * Track each region (see follow). A region drawn over an element's travel that lost the element on most frames is
+ * planned again from the content that travels between its rest states, and keeps whichever track found more.
+ */
+export async function trackRegions(
+	dir: string,
+	scan: Scan,
+	regions: TrackRegionInput[],
+	floor: number,
+	warnings: string[],
+): Promise<RegionTrack[]> {
+	const frames = scan.frames;
+	const frame = { x: 0, y: 0, w: scan.first.width, h: scan.first.height };
+	const anchors = anchorReader(dir, frames);
+	const plans: Plans[] = [];
+	for (const r of regions)
+		plans.push(await planRegion(dir, r, scan, anchors.at, floor));
+	const source = frameSource((k) => readFrame(dir, k), anchors.done);
+	const ctx: Context = {
+		frames,
+		pass: (states, done) =>
+			runPass(frames, states, source, scan.first, floor, done),
+	};
+	const { main, used } = await follow(ctx, regions, plans);
+	for (const [i, r] of regions.entries()) {
+		const s = main[i] as State;
+		if ((used[i] as RegionPlan).bounded || r.at !== undefined) continue;
+		if (foundCount(s) >= POOR * frames) continue;
+		// Only a region that shows something else where its element should be: an element that is simply not there
+		// yet (absent) is no sign of a wrong plan.
+		const other = s.region.samples.filter((p) => p.status === "other").length;
+		if (other < (frames - foundCount(s)) / 2) continue;
+		const p = await travelPlans(r, scan, anchors.at, floor);
+		if (!p) continue;
+		const again = await follow(ctx, [r], [p]);
+		if (foundCount(again.main[0] as State) <= foundCount(s)) continue;
+		main[i] = again.main[0] as State;
+		used[i] = again.used[0] as RegionPlan;
+	}
 	main.forEach((s, i) => {
 		const smp = s.region.samples;
 		if (!smp.some((p) => p.found))
@@ -172,6 +212,7 @@ export async function trackRegions(
 			bounded,
 		);
 		scaleInverted(smp);
+		markRepeats(smp);
 		fillSamples(
 			smp,
 			shapedOf(smp),

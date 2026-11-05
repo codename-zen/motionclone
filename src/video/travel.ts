@@ -5,6 +5,7 @@ import { COARSE, type Frame, type Rect, score, TINY } from "./match.ts";
 // A block moved when it matches this well at the travel and better than where it was.
 const MOVED_NCC = 0.8;
 const MOVED_MARGIN = 0.05;
+const SURE_NCC = 0.95;
 // Kept blocks stay this far inside the region at both rest states.
 const EDGE = 8;
 // The fitted box keeps at least this share of the moving blocks' box.
@@ -120,36 +121,92 @@ function limitOf(r: Rect, d: { x: number; y: number }, m: number): Rect {
 	return { x: x0, y: y0, w: Math.max(0, x1 - x0), h: Math.max(0, y1 - y0) };
 }
 
+// A region thinner than this is searched as this thick (frame pixels), so its content still fills a voting block.
+const MIN_SIDE = 1.5 * BLOCK * TINY;
+
+/** The rect grown about its centre to MIN_SIDE on each thinner side, inside the frame. */
+function thickened(r: Rect, p: Plane): Rect {
+	const grow = (at: number, len: number, max: number): [number, number] => {
+		if (len >= MIN_SIDE) return [at, len];
+		const l = Math.min(max, MIN_SIDE);
+		return [Math.max(0, Math.min(max - l, at + len / 2 - l / 2)), l];
+	};
+	const [x, w] = grow(r.x, r.w, p.width);
+	const [y, h] = grow(r.y, r.h, p.height);
+	return { x, y, w, h };
+}
+
 /**
- * Content of the rect that travels between two rest states: blocks vote for where their structure went
- * (zero-mean, normalised luma, so a background that flips around them does not matter), the displacement is
- * refined at quarter and full resolution, and the box is the moving blocks that stay inside the rect.
+ * Content of the rect that travels between two rest states (see travelIn); `thin` also looks for content thinner
+ * than a voting block, for a region planned again from travel. A rect too thin for the voting blocks,
+ * such as one drawn over a row of icons along its travel, is searched thickened, and the element box is then cut
+ * back to the rect; the element must stay inside it at both states.
  */
 export function findTravel(
 	a: Frame,
 	b: Frame,
 	r: Rect,
 	floor: number,
+	thin = false,
 ): Travel | null {
+	const g = thickened(r, a.full);
+	const t = travelIn(a, b, g, floor, thin);
+	if (!t || (g.w === r.w && g.h === r.h)) return t;
+	const x = Math.max(t.box.x, r.x);
+	const y = Math.max(t.box.y, r.y);
+	const box = {
+		x,
+		y,
+		w: Math.min(t.box.x + t.box.w, r.x + r.w) - x,
+		h: Math.min(t.box.y + t.box.h, r.y + r.h) - y,
+	};
+	const moved = { ...box, x: box.x + t.dx, y: box.y + t.dy };
+	if (box.w < BLOCK || box.h < BLOCK || !inside(moved, r, 0)) return null;
+	return { ...t, box };
+}
+
+/**
+ * Content of the rect that travels between two rest states: blocks vote for where their structure went
+ * (zero-mean, normalised luma, so a background that flips around them does not matter), the displacement is
+ * refined at quarter and full resolution, and the box is the moving blocks that stay inside the rect.
+ */
+function travelIn(
+	a: Frame,
+	b: Frame,
+	r: Rect,
+	floor: number,
+	thin: boolean,
+): Travel | null {
+	// With `thin`, content thinner than a voting block, such as a toolbar between two panels, votes with smaller
+	// blocks when no large one does.
 	const v = vote(a.tiny, b.tiny, r);
-	if (!v) return null;
+	const fine =
+		v || !thin ? null : vote(a.coarse, b.coarse, r, null, false, COARSE);
+	if (!v && !fine) return null;
+	// Thin content is classified with blocks at half-block steps too, so some lie wholly on it.
+	const at = tiles(r, COARSE, v ? BLOCK : BLOCK / 2);
 	const c = refine(
 		b.coarse,
-		blocksAt(a.coarse, tiles(r, COARSE), BLOCK),
-		{ x: (v.x * TINY) / COARSE, y: (v.y * TINY) / COARSE },
-		TINY / COARSE + 1,
+		blocksAt(a.coarse, at, BLOCK),
+		v
+			? { x: (v.x * TINY) / COARSE, y: (v.y * TINY) / COARSE }
+			: (fine as { x: number; y: number }),
+		v ? TINY / COARSE + 1 : 0,
 	);
 	const n = BLOCK * COARSE;
-	const moved = blocksAt(a.coarse, tiles(r, COARSE), BLOCK).flatMap((k) => {
-		const at = score(b.coarse, k.g, k.x + c.x, k.y + c.y)?.ncc ?? -1;
+	const scored = blocksAt(a.coarse, at, BLOCK).flatMap((k) => {
+		const ncc = score(b.coarse, k.g, k.x + c.x, k.y + c.y)?.ncc ?? -1;
 		const still = Math.abs(score(b.coarse, k.g, k.x, k.y)?.ncc ?? 0);
-		if (at < MOVED_NCC || at < still + MOVED_MARGIN) return [];
-		return [{ x: k.x * COARSE, y: k.y * COARSE, w: n, h: n }];
+		if (ncc < MOVED_NCC || ncc < still + MOVED_MARGIN) return [];
+		return [{ x: k.x * COARSE, y: k.y * COARSE, w: n, h: n, ncc }];
 	});
+	const moved = scored.map(({ ncc: _, ...m }) => m);
 	if (moved.length < MIN_VOTES) return null;
+	// Thin content is refined on the blocks that lie wholly on it, as its neighbours change between the states.
+	const sure = scored.filter((m) => m.ncc >= SURE_NCC);
 	const d = refine(
 		b.full,
-		blocksAt(a.full, moved, n),
+		blocksAt(a.full, v || sure.length < MIN_VOTES ? moved : sure, n),
 		{ x: c.x * COARSE, y: c.y * COARSE },
 		COARSE,
 	);

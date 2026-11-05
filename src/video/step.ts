@@ -14,6 +14,7 @@ import {
 import type { Method, RegionSample } from "./samples.ts";
 import {
 	clampScale,
+	cutByFrame,
 	type Fit,
 	MAX_BLUR,
 	type Pose,
@@ -187,6 +188,7 @@ export function step(s: State, f: Frame, rgba: Rgba, k: number) {
 		quality: Math.round(quality * 1000) / 1000,
 		status,
 		method,
+		cut: found && cutByFrame(f, s.model, m),
 		flipped,
 		inverted: inverted !== null,
 	});

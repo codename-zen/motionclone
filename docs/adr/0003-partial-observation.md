@@ -113,7 +113,8 @@ On the recording, `summary[0].y` (147.5 to 180 px from 699 ms over 338 ms) and `
 
 A looping clip moves one element's property several times, such as a sheet that slides down, up, down and up.
 A series is cut into motions at rests: at least 3 frames and 250 ms within 3 % of the series' range (at least the movement floor).
-Each motion runs from where the rest before it holds its value to where the rest after it ends, and must cover a quarter of the series' range; smaller swings are reading wobble.
+Each motion runs from where the rest before it holds its value to where the rest after it ends, and must cover a quarter of the series' range, or travel four rest tolerances (12 % of the range) from one rest to the next, or two into or out of a gap without readings (ADR 0002); smaller swings are reading wobble.
+A swing too small to keep is cut off the motion after its rest instead of joining it.
 A series with one motion stays whole, so a hold shorter than 250 ms stays inside its motion.
 Each motion is its own row: `sheet[0].y`, `sheet[0].y#2`, `sheet[0].y#3`, numbered like progress rows, with its own timing, easing, distance and declared animation.
 A pulse with a rest at its peak becomes two rows, out and back; without one it still ends where it starts and is dropped.

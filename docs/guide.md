@@ -23,6 +23,18 @@ The ones you will use most:
 A selector that matches nothing is skipped with a warning.
 With the `load` trigger the page's own load animations have already started by then, so use `--trigger none` or `click` if the motion should start after the banner is gone.
 
+`--trigger drag --target <css> --drag "x,y@ms ..."` drags with the mouse pointer during the recording, for sheets, sliders and split views that follow a finger.
+Each point is CSS px from the centre of the target, at ms after the trigger.
+The pointer goes down at the first point, moves on every frame along straight lines between the points, and goes up at the last point.
+`--drag "0,0@550 0,320@1300"` presses at 550 ms and pulls the target 320 px down by 1300 ms.
+Points must be in time order.
+The moves run on the same clock as the frames, so two recordings of the same drag are identical.
+The page gets `pointerdown`, `pointermove` and `pointerup` events of a mouse, not touch events.
+`--like` on a page capture copies the drag; against a video, add the drag to the capture of your rebuild.
+
+A tracked element that leaves the crop gets a warning with the time it leaves and comes back.
+With `--like` on a video, there is no warning when the matching region of the reference is hidden, lost or cut off at the same time, as when a panel slides off the screen in both.
+
 Recordings are repeatable: the page runs on a clock that motionclone moves forward frame by frame, so two recordings of the same page are identical.
 Text is drawn with grayscale antialiasing on every OS, so text colours measure the same on Windows, macOS and Linux.
 A Chrome you attach with `--cdp-url` keeps its own text settings.
@@ -44,12 +56,20 @@ It lists the time windows where the screen moves, so you can pick `--start` and 
 
 - `--region name=x,y,w,h` marks one element to follow, in video pixels after the crop.
   Draw the box around everywhere the element goes during the clip.
+  A thin box along a row of icons is fine, and so is a box over a toolbar that moves between panels that grow and shrink: when the first plan finds the element on under half of the frames, motionclone follows the content that travels furthest between the region's rest states instead.
+  An element that slides past the frame edge is followed while half of it still shows; its rows then have a lower-bound distance, and the frames it is gone are not readings.
+- A frame the recording shows twice while something moves (a screen recorder that dropped a frame) is not read as a stop: its readings are left out and marked `repeated` in `track.json`.
   `card[0]` and `card[1]` are measured as a group, like sibling elements on a page.
 - Without `--region`, motionclone looks for moving shapes by itself and names them `blob[0]`, `blob[1]` and so on.
   A panel that slides past the edge of the screen is followed by the part that stays in view, and what it reveals or covers gets its own region.
 - A region often locks onto content that rides on a panel, such as a strip of dates on a sheet.
   When the panel's own edge moves apart from that content (it trails it, or arrives first), the edge is followed too, as `sheet::edge`, and gets rows of its own.
   `capture` prints a warning for each such edge, and `verify` measures your page's edge from its frames, next to the element you map to the region.
+  The warning names the edge as its rows do: `sheet::edge` for `sheet`, `blob::edge[2]` for `blob[2]`.
+  A panel that slides over content that stays in place, such as a sidebar revealing its own content, gets an edge too: its edge sweeps across the content while the content holds still.
+  A thin divider line between two areas of the same colour counts as an edge.
+  An edge is followed from frame to frame, so a neighbouring edge or an icon that changes colour does not take its place; a frame where it does not show near where it should be has no reading.
+  `verify` writes your page's edge readings to `clone-edges.json` next to `verdict.json`.
 - On a recording that switches between a light and a dark theme, text is followed against whatever is behind it, so white text on the dark page counts as visible.
   Its fades there are measured between the two switches, and `verify` measures your page between the same times.
 - `--css-scale 2` turns a recording of a 2x screen into CSS pixels.
@@ -103,7 +123,10 @@ motionclone sheet ref mine --out design
   An empty black panel means the frames match.
 - Use it to compare layout, colours and type sizes before you work on motion.
 - It works for page and video references.
-  The rebuild is scaled to the size of the reference.
+  The rebuild is drawn at the reference's scale from the top-left corner, as verify compares them.
+  When its screen has another size in CSS px, it is cut or padded, never stretched, and the Clone column title and the command's output give its size.
+- Each row is labelled with the time of the reference frame.
+  When the nearest rebuild frame has another time, the label gives it too, such as "rest 700 ms, clone 717 ms", so a timing gap is not taken for a layout change.
 - The MCP tool is `design_sheet`.
 
 ## What verify writes
@@ -112,6 +135,8 @@ motionclone sheet ref mine --out design
 - `report.md`: the same as text, with a list of fixes.
 - `sheets/`: images for each failing row, with the reference, your version and the difference side by side, and the time of each row.
   The difference shows only differing pixels, in red on black.
+  Each image is cut around what the row measures: the element, or for an `::edge` row the panel edge and the content next to it, at the moments named first in the row's message.
+  Short blue ticks beside each tile mark the sides of that box in that recording.
 
 Exit codes: 0 when every row passes, 1 when rows fail, 2 when the recordings cannot be compared (different settings, missing files), 3 when nothing was checked.
 "NO CHECKS" means no motion or look row was checked, for example when every row is advisory.
@@ -149,10 +174,15 @@ A line read from one letter, or from its x-height, takes the cap height of the o
 A row of short numbers, such as dates of one or two digits, is one line when its glyphs have one height and sit on one baseline.
 A reference line is paired only with a clone line in the same place: the same row of a repeated column, or a line that shares its rows.
 When your version has no such line (other words, or no text there), the row is "not comparable": it is listed in the Look section and never fails.
+A type row's message names the line it compares: its left edge and baseline in CSS px in the reference and in your version, and its words when a style record has them.
+A failing row names up to three lines that are off, such as "the line at x 25, baseline y 611 px (12.1 px) reads 14.4 px in the clone at x 25, baseline y 618 px".
+`verdict.json` lists every pair under the row's `lines`.
 When the reference rests in more than one state, such as light and dark, each state gets its own look rows.
 Rows of the last state keep their ids; the others start with the state's name, such as `dark.look.background`, and their label gives the time of the rest frame.
 Your version is checked at the frame with the same index.
 From a video, look rows also cover the text colour of each region and outside the regions, when one colour holds most of the text.
+A region that is hidden on the rest frame, such as a closed panel, gets its rows from the latest rest frame of the same state that shows it; the label gives that time, such as "info[0] background (rest at 3833 ms)", and your version is checked at the same frame.
+When your version tracks the element but does not show it there, the row says so instead of "not tracked".
 A large panel (60 % of the screen wide) that stands out from the page gets its top edge (±3 % of the screen) and its corner radius (±20 %).
 
 `progress` rows check how an element's look changes, such as a fade, a dim or a cross-fade.
@@ -192,6 +222,7 @@ It does not fail the result.
   Rotation is not measured.
   Colour changes are measured as progress rows: fades and switches of a region or of the background.
 - A panel edge is found only where it stands out from what is around it: a white sheet on a white page shows no edge, so its rest position there is taken from the nearest frame that shows it, or left out.
+- A panel edge is looked for only around an element that moves at least 8 CSS px; content that stays exactly in place gets no edge, even when a panel reveals it.
 - When an element is invisible at the start of its motion, its start value and exact easing are a best guess; only the visible part is checked.
 - Rows with weak evidence (few clear frames, a loose fit) are advisory and never fail.
 - From a video, an opacity row that the pixels contradict drops to medium or low confidence; its notes give both numbers.

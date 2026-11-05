@@ -40,6 +40,7 @@ motionclone capture <url|path> --out .motionclone/ref --duration 1500 --track ".
 ```
 
 - `--trigger load|hover|leave|click|scroll` with `--target <css>` or `--scroll-to <px|css>`; default is load.
+- `--trigger drag --target <css> --drag "0,0@550 0,320@1300"` drags with the mouse during the recording: points are CSS px from the target's centre at ms after the trigger, pressed at the first and released at the last.
 - `--track` lists the selectors whose elements are measured every frame; track only what moves.
 - Add `--viewport`, `--fps`, `--color-scheme`, `--reduced-motion`, `--storage-state` or `--cdp-url` when the page needs them.
 - Read the warnings the command prints (cropped elements, truncated frames, ignored options).

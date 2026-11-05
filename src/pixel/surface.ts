@@ -1,8 +1,16 @@
 import type { ClipRect } from "../capture/options.ts";
 import type { TrackedElement } from "../capture/types.ts";
 import type { Track } from "../measure/elements.ts";
+import { lost } from "../measure/series.ts";
 import { readPng } from "../verify/pixels.ts";
 import { type EdgeBand, edgesIn } from "./edge.ts";
+import { type Box, carried, lead, size, sweeps } from "./edge-belongs.ts";
+import {
+	type EdgeCandidate,
+	followEdge,
+	type Span,
+	START_STEP,
+} from "./edge-follow.ts";
 import { restFills } from "./edge-rest.ts";
 import { elementRegion, type Rect } from "./region.ts";
 
@@ -27,11 +35,6 @@ const RIGID_SHARE = 0.05;
 const MIN_FRAMES = 3;
 // The element counts as at rest where its box moves less than this between frames, CSS px.
 const REST_PX = 0.25;
-// A surface edge travels between half and twice as far as the element it carries, in step with it.
-const MIN_REACH = 0.5;
-const MIN_CORRELATION = 0.9;
-
-type Box = { x: number; y: number; w: number; h: number };
 
 const boxesOf = (track: Track, selector: string, index: number) =>
 	track.frames.map(
@@ -40,9 +43,6 @@ const boxesOf = (track: Track, selector: string, index: number) =>
 				| (Box & Partial<TrackedElement>)
 				| null,
 	);
-
-const lead = (b: Box, axis: "x" | "y") => (axis === "y" ? b.y : b.x);
-const size = (b: Box, axis: "x" | "y") => (axis === "y" ? b.h : b.w);
 
 /** The band to search for an element's surface edge, or null when the element does not travel. */
 export function edgeSetup(
@@ -65,9 +65,17 @@ export function edgeSetup(
 	return { axis, band };
 }
 
+/** A video frame that shows nothing of the element: the tracker lost it, or the recording repeated the frame. */
+const unseen = (e: TrackedElement) =>
+	e.repeated === true || (lost(e) && e.clipped !== true);
+
+// Steps this strong continue an edge that a stronger step started (edge-follow.ts).
+const KEEP_STEP = START_STEP / 2;
+
 /**
- * Per frame, the position (CSS px along the axis) of the surface edge in the band nearest to the element's box on
- * that frame; null where no edge shows or the element has no box. Page and video frames are read alike.
+ * Per frame, the position (CSS px along the axis) of the surface edge in the band that starts nearest to the
+ * element's box and is followed from frame to frame (edge-follow.ts); null where it does not show or the element
+ * has no reading, as on frames a video tracker lost or a recording repeated. Page and video frames are read alike.
  */
 export async function readEdges(
 	dir: string,
@@ -79,11 +87,13 @@ export async function readEdges(
 ): Promise<(number | null)[]> {
 	const boxes = boxesOf(track, selector, index);
 	const { axis, band } = setup;
-	const out: (number | null)[] = [];
+	const cands: (EdgeCandidate[] | null)[] = [];
+	const spans: Span[] = [];
 	for (let k = 0; k < track.frames.length; k++) {
 		const box = boxes[k];
-		if (!box) {
-			out.push(null);
+		if (!box || unseen(box as TrackedElement)) {
+			cands.push(null);
+			spans.push(null);
 			continue;
 		}
 		const png = await readPng(dir, k);
@@ -107,53 +117,26 @@ export async function readEdges(
 						b1: px(band.x + band.w, clip.x),
 					};
 		const near = lead(box, axis);
-		const far = near + size(box, axis);
-		const gap = (p: number) => Math.max(0, near - p, p - far);
-		const best = edgesIn(png, b)
-			.map((e) => o + e.pos / s)
-			.sort((p, q) => gap(p) - gap(q))[0];
-		out.push(best ?? null);
+		spans.push({ near, far: near + size(box, axis) });
+		cands.push(
+			edgesIn(png, b, KEEP_STEP).map((e) => ({
+				pos: o + e.pos / s,
+				step: e.step,
+				line: e.line,
+			})),
+		);
 	}
-	return out;
+	return followEdge(cands, spans);
 }
 
 const median = (v: number[]) => [...v].sort((a, b) => a - b)[v.length >> 1];
 
 /**
- * The edge belongs to the element's surface: it travels about as far as the element, and with it (the positions
- * correlate), rather than being another edge the nearest-edge choice happened to land on.
- */
-function carried(
-	seen: { k: number }[],
-	leads: readonly (number | null)[],
-	edges: readonly (number | null)[],
-	travel: number,
-): boolean {
-	const e = seen.map((s) => edges[s.k] as number);
-	const l = seen.map((s) => leads[s.k] as number);
-	const reach = Math.max(...e) - Math.min(...e);
-	if (reach < MIN_REACH * travel || reach > travel / MIN_REACH) return false;
-	const mean = (v: number[]) => v.reduce((a, b) => a + b, 0) / v.length;
-	const me = mean(e);
-	const ml = mean(l);
-	let sxy = 0;
-	let sxx = 0;
-	let syy = 0;
-	e.forEach((v, i) => {
-		const dx = v - me;
-		const dy = (l[i] as number) - ml;
-		sxy += dx * dy;
-		sxx += dx * dx;
-		syy += dy * dy;
-	});
-	return sxx > 0 && syy > 0 && sxy / Math.sqrt(sxx * syy) >= MIN_CORRELATION;
-}
-
-/**
  * The surface edge as a tracked element, one box per frame: from the edge across the element at rest. Where the
  * edge does not show while the element rests (a white sheet on a white page), it is held as edge-rest.ts says;
  * while the element moves there, the frame has no box. Null when the edge rides rigidly on the element or is not
- * its surface's, unless `always`: verify measures a clone's edge whatever it does.
+ * its surface's, unless `always`: verify measures a clone's edge whatever it does. With `clip`, rests where the
+ * element lies off the captured area hold nothing.
  */
 export function edgeElements(
 	track: Track,
@@ -162,6 +145,7 @@ export function edgeElements(
 	setup: EdgeSetup,
 	edges: readonly (number | null)[],
 	always = false,
+	clip: ClipRect | null = null,
 ): (TrackedElement | null)[] | null {
 	const { axis, band } = setup;
 	const boxes = boxesOf(track, selector, index);
@@ -186,17 +170,36 @@ export function edgeElements(
 	const offsets = seen.map((s) => s.offset);
 	const apart = Math.max(...offsets) - Math.min(...offsets);
 	const rigid = apart <= Math.max(RIGID_PX, RIGID_SHARE * travel);
-	if (!always && (rigid || !carried(seen, leads, edges, travel))) return null;
+	const belongs =
+		carried(seen, leads, edges, travel) ||
+		sweeps(seen, boxes, edges, axis, travel);
+	if (!always && (rigid || !belongs)) return null;
 	const atRest = seen.filter((s) => rest[s.k]).map((s) => s.offset);
 	const offset = median(atRest.length > 0 ? atRest : offsets) as number;
 	const extent = Math.max(...boxes.flatMap((b) => (b ? [size(b, axis)] : [])));
 	// From the edge across the element: a top edge reaches the element's far side, a bottom edge its near side.
 	const span = Math.max(1, offset <= 0 ? extent - offset : offset);
-	const fills = restFills(leads, rest, edges);
+	// A rest off the screen (a closed panel) shows nothing to hold; one in view may hide its edge on the page.
+	const inView = (b: Box | null) =>
+		!clip ||
+		(b !== null &&
+			b.x < clip.x + clip.width &&
+			b.x + b.w > clip.x &&
+			b.y < clip.y + clip.height &&
+			b.y + b.h > clip.y);
+	const fills = restFills(
+		leads,
+		rest.map((r, k) => r && inView(boxes[k] ?? null)),
+		edges,
+	);
+	// Before the edge first shows (a panel that enters from off the screen), it holds its first position unseen:
+	// its true start lies there or further, so the row is partly observed (ADR 0003).
+	const first = edges.findIndex((e) => e !== null && e !== undefined);
 	return boxes.map((b, k) => {
 		const e = edges[k];
 		const shown = e !== null && e !== undefined;
-		const pos = shown ? e : fills[k];
+		const before = k < first && fills[k] == null;
+		const pos = shown ? e : before ? edges[first] : fills[k];
 		if (!b || pos === null || pos === undefined) return null;
 		const start = offset <= 0 ? pos : pos - span;
 		const r1 = (v: number) => Math.round(v * 10) / 10;
@@ -215,7 +218,12 @@ export function edgeElements(
 			boxShadow: "none",
 			// A held position stands for the rest it was taken from; quality 0 keeps it from counting as a sample.
 			quality: shown ? 1 : 0,
-			observed: { position: true, scale: false, blur: false, opacity: false },
+			observed: {
+				position: !before,
+				scale: false,
+				blur: false,
+				opacity: false,
+			},
 		};
 	});
 }

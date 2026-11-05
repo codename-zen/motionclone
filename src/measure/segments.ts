@@ -5,8 +5,11 @@ export const REST_MS = 250;
 const REST_FRAMES = 3;
 // A rest may wobble by this share of the series' range: tracker jitter, not motion.
 const REST_SHARE = 0.03;
-// A motion between rests must cover this share of the series' range: smaller swings are reading wobble.
+// A motion between rests must cover this share of the series' range, or travel this many rest tolerances from one
+// rest to the next (half as many into or out of a gap without readings); smaller swings are reading wobble.
 const MOTION_SHARE = 0.25;
+const NET_RESTS = 4;
+const GAP_RESTS = 2;
 
 /** Index ranges [first, last] where the value stays within `tol` for at least REST_MS and REST_FRAMES. */
 function restRuns(series: Series, tol: number): [number, number][] {
@@ -72,23 +75,40 @@ function splitAtGaps(series: Series): Series[] {
 	return out;
 }
 
+const netOf = (s: Series) => Math.abs((s.at(-1)?.[1] ?? 0) - (s[0]?.[1] ?? 0));
+
 /**
  * The series cut into one piece per motion, at rests of at least REST_MS and at gaps without readings that long;
  * each piece runs from the start of the rest before its motion to the end of the rest after it. A series with one
- * motion comes back whole.
+ * motion comes back whole, unless a swing too small to keep was cut off it. A piece that runs into or out of a gap
+ * is the element leaving or entering what the tracker sees, so it needs less travel.
  */
 export function splitAtRests(series: Series, minRange: number): Series[] {
-	const floor = Math.max(minRange, MOTION_SHARE * rangeOf(series));
-	const pieces = splitAtGaps(series).flatMap((part) =>
-		piecesOf(part, minRange, rangeOf(series)),
-	);
-	const moving = pieces.filter((p) => p.length >= 2 && rangeOf(p) >= floor);
-	return moving.length > 1 ? moving : [series];
+	const total = rangeOf(series);
+	const floor = Math.max(minRange, MOTION_SHARE * total);
+	const tol = Math.max(minRange, REST_SHARE * total);
+	const parts = splitAtGaps(series);
+	const moving: Series[] = [];
+	let swung = false;
+	parts.forEach((part, i) => {
+		const cut = piecesOf(part, tol, minRange);
+		cut.forEach((p, j) => {
+			const atGap =
+				(i > 0 && j === 0) || (i < parts.length - 1 && j === cut.length - 1);
+			const net = (atGap ? GAP_RESTS : NET_RESTS) * tol;
+			if (p.length >= 2 && (rangeOf(p) >= floor || netOf(p) >= net))
+				moving.push(p);
+			else if (rangeOf(p) > tol) swung = true;
+		});
+	});
+	return moving.length > 1 || (moving.length === 1 && swung)
+		? moving
+		: [series];
 }
 
-function piecesOf(series: Series, minRange: number, total: number): Series[] {
+/** The part cut at its rests (within `tol`) into one piece per stretch between them; whole without rests. */
+function piecesOf(series: Series, tol: number, minRange: number): Series[] {
 	if (series.length < 2) return [series];
-	const tol = Math.max(minRange, REST_SHARE * total);
 	const rests = restRuns(series, tol);
 	const last = series.length - 1;
 	const bounds: [number, number][] = [];
@@ -101,11 +121,7 @@ function piecesOf(series: Series, minRange: number, total: number): Series[] {
 		end = rest[1];
 	}
 	if (end < last) bounds.push([start, last]);
-	const floor = Math.max(minRange, MOTION_SHARE * total);
-	const pieces = bounds
-		.map(([a, b]) => series.slice(a, b + 1))
-		.filter((p) => p.length >= 2 && rangeOf(p) >= floor);
-	return pieces.length > 1 ? pieces : [series];
+	return bounds.map(([a, b]) => series.slice(a, b + 1));
 }
 
 // A step this close to the rest value, as a share of the piece's amplitude, is still the rest.

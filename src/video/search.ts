@@ -30,6 +30,8 @@ export interface Lock {
 }
 
 export const MIN_SCALE = 0.3;
+// An element leaving the frame is still matched while this share of its window, at most, lies outside.
+const OVERHANG = 0.5;
 export const MAX_SCALE = 3;
 const COARSE_RADIUS = 10;
 const PLACE_RADIUS = 2;
@@ -74,7 +76,7 @@ function attempt(
 	const ox = rx - x;
 	const oy = ry - y;
 	const grid = model.render(level, pose.s, pose.blur, ox, oy);
-	const hit = best(f[level], grid, x, y, r);
+	const hit = best(f[level], grid, x, y, r, OVERHANG);
 	return {
 		...pose,
 		cx: (hit.x + ox + w / 2) * k,
@@ -93,7 +95,7 @@ function attempt(
 /** Move a try to its sub-pixel peak on its level and score it there. */
 function settle(f: Frame, model: TemplateModel, t: Try): Try {
 	const k = FACTOR[t.level];
-	const at = subPixel(f[t.level], t.grid, t.hit);
+	const at = subPixel(f[t.level], t.grid, t.hit, OVERHANG);
 	const pose = {
 		...t,
 		cx: (at.x + t.ox + t.grid.w / 2) * k,
@@ -224,6 +226,18 @@ export function search(
 			Math.min(MAX_BLUR, Math.max(0, b + d * Math.max(0.5, 0.15 * b))),
 		);
 	return fitOf(settle(f, model, attempt(f, model, "full", cur, 1)));
+}
+
+/** Whether the element's window at a pose reaches past the frame: the frame cuts it there. */
+export function cutByFrame(f: Frame, model: TemplateModel, p: Pose): boolean {
+	const w = (p.s * model.win.w) / 2;
+	const h = (p.s * model.win.h) / 2;
+	return (
+		p.cx - w < 0 ||
+		p.cy - h < 0 ||
+		p.cx + w > f.full.width ||
+		p.cy + h > f.full.height
+	);
 }
 
 /** Shift only, at a fixed scale and blur, near a pose. */

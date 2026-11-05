@@ -34,6 +34,10 @@ export interface RegionSample {
 	energy: number;
 	/** The box reached past the region edge on this frame: its position is not a reading of the whole travel. */
 	clipped: boolean;
+	/** The frame edge cuts the element's window: it is entering or leaving the frame, so its travel goes on unseen. */
+	cut: boolean;
+	/** The recording repeats the frame before on this frame while the region moves: no reading (see repeats.ts). */
+	repeat: boolean;
 	/** Light and dark around the element are swapped against the reference frame, as after a theme switch. */
 	flipped: boolean;
 	/** Matched with light and dark swapped, on a flipped backdrop. */

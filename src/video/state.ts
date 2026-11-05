@@ -118,6 +118,8 @@ export function initState(
 		centroid: null,
 		energy: 0,
 		clipped: false,
+		cut: false,
+		repeat: false,
 		flipped: false,
 		inverted: false,
 	}));

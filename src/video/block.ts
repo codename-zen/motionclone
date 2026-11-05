@@ -54,8 +54,9 @@ export const blocksAt = (p: Plane, at: Shift[], n: number) =>
 	});
 
 /**
- * The most voted displacement of the rect's blocks on the eighth-resolution level. Blocks search all of `b`, or
- * only `within` (frame pixels); standstill votes are excluded unless `still` is set.
+ * The most voted displacement of the rect's blocks on a level of factor `f` (eighth resolution by default), in that
+ * level's pixels. Blocks search all of `b`, or only `within` (frame pixels); standstill votes are excluded unless
+ * `still` is set.
  */
 export function vote(
 	a: Plane,
@@ -63,18 +64,19 @@ export function vote(
 	r: Rect,
 	within: Rect | null = null,
 	still = false,
+	f = TINY,
 ): Shift | null {
-	const bx0 = within ? Math.max(0, Math.ceil(within.x / TINY)) : 0;
-	const by0 = within ? Math.max(0, Math.ceil(within.y / TINY)) : 0;
+	const bx0 = within ? Math.max(0, Math.ceil(within.x / f)) : 0;
+	const by0 = within ? Math.max(0, Math.ceil(within.y / f)) : 0;
 	const bx1 = within
-		? Math.min(b.width, Math.floor((within.x + within.w) / TINY))
+		? Math.min(b.width, Math.floor((within.x + within.w) / f))
 		: b.width;
 	const by1 = within
-		? Math.min(b.height, Math.floor((within.y + within.h) / TINY))
+		? Math.min(b.height, Math.floor((within.y + within.h) / f))
 		: b.height;
 	const votes = new Map<string, number>();
 	// Half-block steps, so content near the frame edge still has a block that fits at both states.
-	for (const t of tiles(r, TINY, BLOCK / 2)) {
+	for (const t of tiles(r, f, BLOCK / 2)) {
 		const g = blockAt(a, t.x, t.y, BLOCK);
 		if (!g) continue;
 		let top = { ncc: VOTE_NCC, x: 0, y: 0, hit: false };
@@ -87,14 +89,20 @@ export function vote(
 		const key = `${top.x - t.x},${top.y - t.y}`;
 		votes.set(key, (votes.get(key) ?? 0) + 1);
 	}
-	let best: { x: number; y: number; n: number } | null = null;
+	let best: { x: number; y: number; n: number; own: number } | null = null;
 	for (const key of votes.keys()) {
 		const [x, y] = key.split(",").map(Number) as [number, number];
 		if (!still && Math.abs(x) <= 1 && Math.abs(y) <= 1) continue;
 		let n = 0;
 		for (let j = -1; j <= 1; j++)
 			for (let i = -1; i <= 1; i++) n += votes.get(`${x + i},${y + j}`) ?? 0;
-		if (n >= MIN_VOTES && (!best || n > best.n)) best = { x, y, n };
+		// Of neighbourhoods that tie, the displacement with the most votes of its own.
+		const own = votes.get(key) ?? 0;
+		if (
+			n >= MIN_VOTES &&
+			(!best || n > best.n || (n === best.n && own > best.own))
+		)
+			best = { x, y, n, own };
 	}
 	return best;
 }

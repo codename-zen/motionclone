@@ -143,7 +143,7 @@ function ringChange(a: Plane, ba: Rect, b: Plane, bb: Rect): number {
  * structure with its surroundings, and the context ring is dropped when the surroundings change between them,
  * as when the whole page flips from light to dark.
  */
-function restPlan(
+export function restPlan(
 	r: TrackRegionInput,
 	a: Anchor,
 	b: Anchor,

@@ -44,10 +44,19 @@ function slide(
 	const k = FACTOR[level];
 	const g = model.render(level, s, blur);
 	const p = f[level];
-	const x0 = Math.max(0, Math.ceil(area.x / k));
-	const y0 = Math.max(0, Math.ceil(area.y / k));
-	const x1 = Math.min(p.width, Math.floor((area.x + area.w) / k)) - g.w;
-	const y1 = Math.min(p.height, Math.floor((area.y + area.h) / k)) - g.h;
+	// Placements inside the area; on an axis where the template does not fit, those whose centre lies in it, so a
+	// region barely larger than the element still has some.
+	const span = (from: number, len: number, size: number, max: number) => {
+		const lo = Math.max(0, Math.ceil(from / k));
+		const hi = Math.min(max, Math.floor((from + len) / k)) - size;
+		if (hi >= lo) return [lo, hi];
+		return [
+			Math.max(0, Math.ceil(from / k - size / 2)),
+			Math.min(max - size, Math.floor((from + len) / k - size / 2)),
+		];
+	};
+	const [x0, x1] = span(area.x, area.w, g.w, p.width) as [number, number];
+	const [y0, y1] = span(area.y, area.h, g.h, p.height) as [number, number];
 	let top: Candidate | null = null;
 	for (let y = y0; y <= y1; y++)
 		for (let x = x0; x <= x1; x++) {
@@ -76,9 +85,10 @@ export function acquire(
 	noise: number,
 ): { fit: Fit; judgement: Judgement } | null {
 	const maxS = Math.min(MAX_SCALE, area.w / model.win.w, area.h / model.win.h);
-	const scales: number[] = [];
-	if (lock.scale) scales.push(pose.s);
-	else for (let s = MIN_SCALE; s <= maxS * 1.0001; s *= STEP) scales.push(s);
+	// The last clear scale is always tried, because the ladder may step past it.
+	const scales: number[] = [pose.s];
+	if (!lock.scale)
+		for (let s = MIN_SCALE; s <= maxS * 1.0001; s *= STEP) scales.push(s);
 	const all = scales
 		.map((s) => slide(f, model, area, s, pose.blur))
 		.filter((c): c is Candidate => c !== null)

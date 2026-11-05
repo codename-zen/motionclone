@@ -95,12 +95,12 @@ function toFramePx(regions: Region[], ex: ExtractResult): TrackRegionInput[] {
 	});
 }
 
-/** A tracked element, plus `clipped`: the region cut its travel on this frame (ADR 0002). */
+/** A tracked element, plus `clipped`: the region or the frame edge cut its travel on this frame (ADR 0002). */
 function element(
 	t: RegionTrack,
 	k: number,
 	css: number,
-): TrackedElement & { clipped: boolean } {
+): TrackedElement & { clipped: boolean; repeated: boolean } {
 	const s = t.samples[k] as RegionSample;
 	// Regions that do not scale are tracked with scale fixed at exactly 1.
 	const scale = Math.round(s.scale * 10000) / 10000;
@@ -108,6 +108,8 @@ function element(
 	const blur = s.blur < MIN_BLUR ? 0 : r1(s.blur * css);
 	// Colour and block readings place the element; they do not measure its blur or opacity.
 	const placedOnly = s.method === "colour" || s.method === "structure";
+	// A repeated frame shows an earlier moment: none of its values is a reading of this one.
+	const seen = !s.repeat;
 	return {
 		index: parseRegionName(t.name).index,
 		x: r1(b.x * css),
@@ -123,12 +125,13 @@ function element(
 		boxShadow: "none",
 		quality: Math.round(s.quality * 100) / 100,
 		observed: {
-			position: s.found && !s.clipped,
-			scale: s.status === "found" && s.method !== "structure",
-			blur: s.status === "found" && !placedOnly,
-			opacity: s.status !== "other" && !placedOnly,
+			position: seen && s.found && !s.clipped,
+			scale: seen && s.status === "found" && s.method !== "structure",
+			blur: seen && s.status === "found" && !placedOnly,
+			opacity: seen && s.status !== "other" && !placedOnly,
 		},
-		clipped: s.clipped,
+		clipped: s.clipped || s.cut,
+		repeated: s.repeat,
 		flipped: s.flipped,
 	};
 }

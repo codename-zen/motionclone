@@ -8,7 +8,8 @@ const median = (v: number[]) =>
  * Edge positions for frames where the element rests but its surface edge does not show, such as a white sheet on a
  * white page; null elsewhere. Each rest takes the edge's offset to the element from frames that show it at a rest
  * in the same place, or else holds the edge where a frame right beside such a rest shows it (the page switched
- * there while the edge had not moved yet), from the frame where the element had moved least. Rests with neither stay empty: nothing shows where the edge is.
+ * there while the edge had not moved yet), from the frame where the element had moved least. Rests with neither stay
+ * empty: nothing shows where the edge is.
  */
 export function restFills(
 	leads: readonly (number | null)[],

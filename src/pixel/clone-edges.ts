@@ -1,3 +1,5 @@
+import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import type { ClipRect } from "../capture/options.ts";
 import type { TrackedElement } from "../capture/types.ts";
 import type { Track } from "../measure/elements.ts";
@@ -11,9 +13,13 @@ import {
 	withEdgeTrack,
 } from "./surface.ts";
 
+/** The file verify writes the clone's edge readings to, beside verdict.json. */
+export const CLONE_EDGES = "clone-edges.json";
+
 /**
  * The clone track with the surface edges the reference tracks, read from the clone's frames the way the reference's
  * were (ADR 0004): in the reference's band placed on the clone, next to the clone's element of the same name.
+ * With `outDir`, the readings are also written there, per frame, so they can be compared with the reference's.
  */
 export async function withCloneEdges(
 	cloneDir: string,
@@ -21,6 +27,7 @@ export async function withCloneEdges(
 	cloneClip: ClipRect,
 	ref: Track,
 	refClip: ClipRect,
+	outDir: string | null = null,
 ): Promise<Track> {
 	const added: {
 		selector: string;
@@ -51,9 +58,39 @@ export async function withCloneEdges(
 				owner,
 				index,
 			);
-			const elements = edgeElements(clone, owner, index, placed, edges, true);
+			const elements = edgeElements(
+				clone,
+				owner,
+				index,
+				placed,
+				edges,
+				true,
+				cloneClip,
+			);
 			if (elements) added.push({ selector: owner, index, elements });
 		}
 	}
-	return withEdgeTrack(clone, added);
+	const out = withEdgeTrack(clone, added);
+	if (outDir && added.length > 0)
+		await writeFile(
+			join(outDir, CLONE_EDGES),
+			`${JSON.stringify(
+				{
+					note: "the clone's surface edges, read from its frames as the reference's were; null where none shows",
+					edges: added.map((a) => ({
+						selector: `${a.selector}::edge`,
+						index: a.index,
+						frames: a.elements.map((e, k) => ({
+							t: clone.frames[k]?.t,
+							x: e?.x ?? null,
+							y: e?.y ?? null,
+						})),
+					})),
+				},
+				null,
+				"	",
+			)}
+`,
+		);
+	return out;
 }

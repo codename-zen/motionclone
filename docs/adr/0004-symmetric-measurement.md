@@ -24,6 +24,8 @@ The clipped frames come from `clipped: true` on the element in `track.json` or f
 When a video tracker flags its element as clipped at the region edge during a row's motion, the reference shows only part of the travel.
 That row's `distanceObserved` is `lower-bound`: a clone that moves further passes the distance check, a clone that moves less than the bound minus the tolerance fails, and the verdict row carries a note.
 
+Surface edges are read on the clone with the same follower as on the reference (ADR 0002), and verify writes the readings to `clone-edges.json` beside `verdict.json`, so both sides can be compared frame by frame.
+
 ## Consequences
 
 - notch-expand passes self-verify at 30 and 60 fps, and so does the same motion with other text and colours.

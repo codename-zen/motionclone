@@ -10,6 +10,12 @@ import {
 	withEdgeTrack,
 } from "../pixel/surface.ts";
 
+/** The capture warning for a region whose surface edge is tracked, naming both as rows name them. */
+export function edgeWarning(selector: string, index: number): string {
+	const at = index > 0 ? `[${index}]` : "";
+	return `region ${selector}${at}: a surface edge beside the tracked content moves apart from it; it is tracked as ${selector}${EDGE}${at}, so its timing, easing and travel get rows of their own`;
+}
+
 /**
  * Regions lock onto distinctive content, such as a strip of text riding on a sheet. Where the sheet's own edge moves
  * apart from that content (it trails it, or overshoots), the edge is tracked too, as `<region>::edge` (ADR 0002).
@@ -35,12 +41,18 @@ export async function trackSurfaceEdges(
 			const setup = edgeSetup(track, selector, index);
 			if (!setup) continue;
 			const edges = await readEdges(dir, track, clip, setup, selector, index);
-			const elements = edgeElements(track, selector, index, setup, edges);
+			const elements = edgeElements(
+				track,
+				selector,
+				index,
+				setup,
+				edges,
+				false,
+				clip,
+			);
 			if (!elements) continue;
 			added.push({ selector, index, elements });
-			warnings.push(
-				`region ${selector}${index > 0 ? `[${index}]` : ""}: a surface edge beside the tracked content moves apart from it; it is tracked as ${selector}${EDGE}, so its timing, easing and travel get rows of their own`,
-			);
+			warnings.push(edgeWarning(selector, index));
 		}
 	}
 	return withEdgeTrack(track, added);

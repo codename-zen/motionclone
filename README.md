@@ -26,11 +26,9 @@ Real app recordings, measured automatically and rebuilt with a different look.
 
 ![Google Pay scratch card: the reference, a rebuild that passes, and a rebuild with the wrong backdrop timing that fails](.github/assets/bench-google-pay.gif)
 
-![Droppy notch: the reference, a rebuild that passes, and a rebuild without blur and scale that fails](.github/assets/bench-droppy.gif)
-
 ![Amie split view: the reference and a rebuild of the drag between calendar and todos](.github/assets/bench-amie.gif)
 
-Clips of Google Pay, Droppy and Amie belong to their owners and are shown only to compare the motion.
+Clips of Google Pay and Amie belong to their owners and are shown only to compare the motion.
 
 ## Install
 

@@ -30,7 +30,9 @@ Real app recordings, measured automatically and rebuilt with a different look.
 
 ![Typefully sidebars: the reference and a rebuild of the sliding sidebars](.github/assets/bench-typefully.gif)
 
-Clips of Google Pay, Amie and Typefully belong to their owners and are shown only to compare the motion.
+![Vercel conference badge: the reference and a rebuild of the badge dragged on its lanyard](.github/assets/bench-vercel-badge.gif)
+
+Clips of Google Pay, Amie, Typefully and Vercel belong to their owners and are shown only to compare the motion.
 
 ## Install
 

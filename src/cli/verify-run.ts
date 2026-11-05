@@ -4,7 +4,7 @@ import { dirname, join, resolve } from "node:path";
 import { NO_CHECKS, renderReport, verdictLabel } from "../report/report.ts";
 import { type SheetInfo, writeSheets } from "../report/sheet.ts";
 import { SpecFile } from "../spec/schema.ts";
-import { type VerifyOptions, verify } from "../verify/index.ts";
+import { type VerifyOptions, verifyMeasured } from "../verify/index.ts";
 import {
 	checkedCounts,
 	countsByKind,
@@ -81,11 +81,20 @@ export async function runVerify(a: VerifyArgs): Promise<VerifyRun> {
 		map: a.map,
 		outDir,
 	};
-	const verdict = await verify(spec, refDir, cloneDir, opts);
+	const { verdict, cloneTrack } = await verifyMeasured(
+		spec,
+		refDir,
+		cloneDir,
+		opts,
+	);
 	const report = renderReport(verdict);
 	const reportPath = join(outDir, "report.md");
 	await writeFile(reportPath, report);
-	const sheets = await writeSheets(verdict, join(outDir, "sheets"));
+	const sheets = await writeSheets(
+		verdict,
+		join(outDir, "sheets"),
+		cloneTrack ?? undefined,
+	);
 	return {
 		verdict,
 		report,

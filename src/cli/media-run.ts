@@ -62,5 +62,10 @@ export async function sideBySideLines(a: SideBySideArgs): Promise<string[]> {
 
 export async function sheetLines(a: SheetArgs): Promise<string[]> {
 	const r = await designSheet(a.refDir, a.cloneDir, a.out);
-	return [...r.moments.map((m) => m.label), `sheet: ${r.png}`];
+	const size = r.cloneSize
+		? [
+				`the clone's screen is ${r.cloneSize.width}x${r.cloneSize.height} CSS px, not the reference's: it is drawn at the reference's scale from the top-left corner`,
+			]
+		: [];
+	return [...size, ...r.moments.map((m) => m.label), `sheet: ${r.png}`];
 }

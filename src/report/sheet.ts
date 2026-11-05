@@ -47,6 +47,8 @@ const BACKGROUND = [40, 40, 40, 255];
 const INK = [240, 240, 240] as const;
 const MUTED = [170, 170, 170] as const;
 const COLUMN_TITLES = ["Reference", "Clone", "Difference"] as const;
+const MARK = [0, 200, 255, 255];
+const TICK = 6;
 
 const slug = (id: string) =>
 	id
@@ -63,37 +65,77 @@ function nearestFrame(track: Track, t: number): number {
 	return best;
 }
 
+/** One capture's track, its crop in CSS px and its frame pixels per CSS px. */
+interface Side {
+	track: Track;
+	clip: Rect;
+	scale: number;
+}
+
+/** The row element's box on one frame, in that capture's frame pixels. */
+function boxAt(row: RowVerdict, side: Side, frame: number): Rect | null {
+	const e = side.track.frames[frame]?.elements[row.selector]?.find(
+		(el) => el.index === row.index,
+	);
+	if (!e || e.w === 0 || e.h === 0) return null;
+	return {
+		x: (e.x - side.clip.x) * side.scale,
+		y: (e.y - side.clip.y) * side.scale,
+		width: e.w * side.scale,
+		height: e.h * side.scale,
+	};
+}
+
 /** Union of the row element's boxes at the chosen frames, in frame pixels, padded and clamped. */
 function cropFor(
 	row: RowVerdict,
 	frames: number[],
-	tracks: { track: Track; clip: Rect }[],
+	sides: Side[],
 	size: { width: number; height: number },
 ): Rect {
-	let x0 = Number.POSITIVE_INFINITY;
-	let y0 = Number.POSITIVE_INFINITY;
-	let x1 = Number.NEGATIVE_INFINITY;
-	let y1 = Number.NEGATIVE_INFINITY;
-	for (const { track, clip } of tracks)
-		for (const f of frames) {
-			const e = track.frames[f]?.elements[row.selector]?.find(
-				(el) => el.index === row.index,
-			);
-			if (!e || e.w === 0 || e.h === 0) continue;
-			x0 = Math.min(x0, e.x - clip.x);
-			y0 = Math.min(y0, e.y - clip.y);
-			x1 = Math.max(x1, e.x + e.w - clip.x);
-			y1 = Math.max(y1, e.y + e.h - clip.y);
-		}
-	if (!Number.isFinite(x0)) return { x: 0, y: 0, ...size };
-	const x = Math.max(0, Math.floor(x0 - PAD));
-	const y = Math.max(0, Math.floor(y0 - PAD));
+	const boxes = sides.flatMap((s) =>
+		frames.flatMap((f) => boxAt(row, s, f) ?? []),
+	);
+	if (boxes.length === 0) return { x: 0, y: 0, ...size };
+	const x0 = Math.min(...boxes.map((b) => b.x));
+	const y0 = Math.min(...boxes.map((b) => b.y));
+	const x1 = Math.max(...boxes.map((b) => b.x + b.width));
+	const y1 = Math.max(...boxes.map((b) => b.y + b.height));
+	const x = Math.max(0, Math.min(size.width - 1, Math.floor(x0 - PAD)));
+	const y = Math.max(0, Math.min(size.height - 1, Math.floor(y0 - PAD)));
 	return {
 		x,
 		y,
-		width: Math.min(size.width, Math.ceil(x1 + PAD)) - x,
-		height: Math.min(size.height, Math.ceil(y1 + PAD)) - y,
+		width: Math.max(1, Math.min(size.width, Math.ceil(x1 + PAD)) - x),
+		height: Math.max(1, Math.min(size.height, Math.ceil(y1 + PAD)) - y),
 	};
+}
+
+/** Short ticks beside a tile, outside it, at the sides of the measured box, so the box's pixels stay visible. */
+function markBox(
+	sheet: PNG,
+	box: Rect | null,
+	area: Rect,
+	x: number,
+	y: number,
+) {
+	if (!box) return;
+	const put = (px: number, py: number) => {
+		if (px >= 0 && py >= 0 && px < sheet.width && py < sheet.height)
+			sheet.data.set(MARK, (py * sheet.width + px) * 4);
+	};
+	for (const [v0, size, along] of [
+		[box.x - area.x, box.width, true],
+		[box.y - area.y, box.height, false],
+	] as const)
+		for (const v of [v0, v0 + size - 1]) {
+			const p = Math.round(v);
+			if (p < 0 || p >= (along ? area.width : area.height)) continue;
+			for (let k = 1; k <= TICK; k++)
+				for (const d of [0, 1])
+					if (along) put(x + p + d, y - k);
+					else put(x - k, y + p + d);
+		}
 }
 
 function crop(src: PNG, r: Rect): PNG {
@@ -124,27 +166,30 @@ async function writeSheet(
 	tracks: { ref: Track; clone: Track; refClip: Rect; cloneClip: Rect },
 	outDir: string,
 ): Promise<SheetInfo> {
+	// The moments of the first failures in the message come first; shown in time order.
 	const frames = [
 		...new Set(row.focusMs.map((t) => nearestFrame(tracks.ref, t))),
 	]
-		.sort((a, b) => a - b)
-		.slice(0, MAX_TIMES);
+		.slice(0, MAX_TIMES)
+		.sort((a, b) => a - b);
 	const [refFirst, cloneFirst] = await Promise.all([
 		readPng(v.referenceDir, frames[0] ?? 0),
 		readPng(v.cloneDir, frames[0] ?? 0),
 	]);
-	const area = cropFor(
-		row,
-		frames,
-		[
-			{ track: tracks.ref, clip: tracks.refClip },
-			{ track: tracks.clone, clip: tracks.cloneClip },
-		],
-		{
-			width: Math.min(refFirst.width, cloneFirst.width),
-			height: Math.min(refFirst.height, cloneFirst.height),
-		},
-	);
+	const ref: Side = {
+		track: tracks.ref,
+		clip: tracks.refClip,
+		scale: refFirst.width / tracks.refClip.width,
+	};
+	const clone: Side = {
+		track: tracks.clone,
+		clip: tracks.cloneClip,
+		scale: cloneFirst.width / tracks.cloneClip.width,
+	};
+	const area = cropFor(row, frames, [ref, clone], {
+		width: Math.min(refFirst.width, cloneFirst.width),
+		height: Math.min(refFirst.height, cloneFirst.height),
+	});
 	const width = 3 * area.width + 4 * GUTTER;
 	const head = headerLines(row, width);
 	const headerHeight = GUTTER + (head.length + 1) * LINE_HEIGHT + GUTTER;
@@ -194,6 +239,14 @@ async function writeSheet(
 		).entries()) {
 			const x = GUTTER + col * (area.width + GUTTER);
 			PNG.bitblt(img, sheet, 0, 0, area.width, area.height, x, y);
+			if (kind !== "diff")
+				markBox(
+					sheet,
+					boxAt(row, kind === "reference" ? ref : clone, frame),
+					area,
+					x,
+					y,
+				);
 			tiles.push({ kind, frame, t, x, y });
 		}
 	}
@@ -211,17 +264,21 @@ async function writeSheet(
 	};
 }
 
-/** Comparison sheets for failing rows only, each with a JSON sidecar; returns what was written. */
+/**
+ * Comparison sheets for failing rows only, each with a JSON sidecar; returns what was written. `cloneTrack` is the
+ * clone as verify measured it, with --map names and surface edges; without it the clone's own track.json is read.
+ */
 export async function writeSheets(
 	v: Verdict,
 	outDir: string,
+	cloneTrack?: Track,
 ): Promise<SheetInfo[]> {
 	const failing = v.rows.filter((r) => !r.pass && r.advisory === null);
 	if (v.setupErrors.length > 0 || failing.length === 0) return [];
 	await mkdir(outDir, { recursive: true });
 	const [ref, clone, refCap, cloneCap] = await Promise.all([
 		readTrack(v.referenceDir),
-		readTrack(v.cloneDir),
+		cloneTrack ?? readTrack(v.cloneDir),
 		readCaptureFile(v.referenceDir),
 		readCaptureFile(v.cloneDir),
 	]);

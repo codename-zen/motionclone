@@ -12,7 +12,6 @@ import { PNG } from "pngjs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { restFramesOf } from "../src/look/rest.ts";
 import { designSheet } from "../src/media/design-sheet.ts";
-import { differenceImage } from "../src/media/image.ts";
 import { sideBySide } from "../src/media/side-by-side.ts";
 import { runFfmpegOrThrow, scanFrames } from "../src/video/ffmpeg.ts";
 import { probeVideo } from "../src/video/probe.ts";
@@ -237,17 +236,52 @@ describe("designSheet", () => {
 	});
 });
 
-describe("differenceImage", () => {
-	it("is black where frames match and red where they differ, as both sheets draw it", () => {
-		const a = new PNG({ width: 20, height: 10 });
-		for (let i = 0; i < a.data.length; i += 4)
-			a.data.set([(i / 4) % 255, 120, 200, 255], i);
-		const b = PNG.sync.read(PNG.sync.write(a));
-		b.data.set([255, 255, 255, 255], 0);
-		const same = differenceImage(a, a);
-		expect([...same.data].filter((v, i) => i % 4 !== 3 && v !== 0)).toEqual([]);
-		const diff = differenceImage(a, b);
-		expect([...diff.data.subarray(0, 4)]).toEqual([255, 0, 0, 255]);
-		expect([...diff.data.subarray(4, 8)]).toEqual([0, 0, 0, 255]);
+describe("designSheet with a clone of another screen size", () => {
+	// White frames with a black 20 px square at 20,20 CSS px; the clone's screen is 100 CSS px wider.
+	async function squareCapture(
+		name: string,
+		width: number,
+		triggerAtMs: number,
+	) {
+		const dir = join(root, name);
+		await mkdir(join(dir, "frames"), { recursive: true });
+		await writeFile(
+			join(dir, "capture.json"),
+			JSON.stringify({
+				frames: 4,
+				frameMs: 100,
+				triggerAtMs,
+				clip: { x: 0, y: 0, width, height: 100 },
+			}),
+		);
+		const png = new PNG({ width, height: 100 });
+		png.data.fill(255);
+		for (let y = 20; y < 40; y++)
+			for (let x = 20; x < 40; x++)
+				png.data.set([0, 0, 0, 255], (y * width + x) * 4);
+		for (let k = 0; k < 4; k++)
+			await writeFile(
+				join(dir, "frames", `${String(k).padStart(4, "0")}.png`),
+				PNG.sync.write(png),
+			);
+		return dir;
+	}
+
+	it("draws the clone at the reference's scale from the top-left corner and says so", async () => {
+		const ref = await squareCapture("size-ref", 200, 0);
+		const clone = await squareCapture("size-clone", 300, 50);
+		const r = await designSheet(ref, clone, join(root, "size-sheet"));
+		expect(r.cloneSize).toEqual({ width: 300, height: 100 });
+		expect(r.moments.at(-1)?.label).toBe("last frame 300 ms, clone 250 ms");
+		const sheet = PNG.sync.read(await readFile(r.png));
+		const diffX = 8 + 2 * 208;
+		const red = count(
+			sheet,
+			diffX,
+			diffX + 200,
+			sheet.height,
+			(r, g, b) => r > 200 && g < 80 && b < 80,
+		);
+		expect(red).toBe(0);
 	});
 });

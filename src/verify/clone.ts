@@ -12,7 +12,7 @@ import { candidateEasing, curveSpanMs, unitCurve } from "../spec/easing.ts";
 import { elementKey, type FittedMotion, fitMotion } from "../spec/motion.ts";
 import { trackBounds } from "../spec/plausible-rows.ts";
 import type { Easing, SpecRow } from "../spec/schema.ts";
-import { ordinalOf } from "./motion-count.ts";
+import { type PairRow, pairMotions } from "./pairing.ts";
 
 export type CloneMotion =
 	| { status: "missing"; matched: number }
@@ -20,7 +20,7 @@ export type CloneMotion =
 			status: "static";
 			/** Layout properties of the same element that move in place of the wanted one. */
 			standIns: string[];
-			/** Set when the clone moves this property, but fewer times than the spec wants. */
+			/** Set when the clone moves this property, but none of its motions pairs with the row. */
 			count?: { got: number; want: number };
 	  }
 	| {
@@ -93,10 +93,8 @@ export function indexClone(
 	};
 }
 
-type RowShape = Pick<
-	SpecRow,
-	"id" | "selector" | "index" | "property" | "easing" | "durationMs" | "startMs"
->;
+type RowShape = PairRow &
+	Pick<SpecRow, "selector" | "index" | "property" | "easing">;
 
 // Time two ranges share, negative for the gap between them.
 const overlap = (a0: number, a1: number, b0: number, b1: number) =>
@@ -152,14 +150,15 @@ export function measuredTiming(
 }
 
 /**
- * The clone's motion for a spec row. When the spec wants several motions of this property, row #n is paired with
- * the clone's n-th motion in time; when it wants one and the clone moves it several times, with the motion nearest
- * the row in time; otherwise with the property's whole series.
+ * The clone's motion for a spec row. When the spec wants several motions of this property, its rows among `rows`
+ * are paired with the clone's motions by time and shape (`pairMotions`); when it wants one and the clone moves it
+ * several times, with the motion nearest the row in time; otherwise with the property's whole series.
  */
 export function measureClone(
 	idx: CloneIndex,
 	row: RowShape,
 	want = 1,
+	rows: readonly RowShape[] = [row],
 ): CloneMotion {
 	const { selector, index, property } = row;
 	const key = elementKey(selector, index);
@@ -168,9 +167,13 @@ export function measureClone(
 	if (!idx.present.has(key))
 		return { status: "missing", matched: idx.matched.get(selector) ?? 0 };
 	const all = idx.motions.get(`${key}.${property}`) ?? [];
+	const same = rows.filter(
+		(r) =>
+			r.selector === selector && r.index === index && r.property === property,
+	);
 	const motion =
 		want > 1
-			? all[ordinalOf(row.id) - 1]
+			? pairMotions(same, all).byRow.get(row.id)
 			: all.length > 1
 				? nearestMotion(all, row)
 				: idx.moving.get(`${key}.${property}`);

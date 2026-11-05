@@ -9,6 +9,7 @@ import {
 	evidenceMetric,
 	firstSeenMs,
 	PARTIAL_NOTE,
+	UNSEEN_END_NOTE,
 } from "./evidence.ts";
 import {
 	directionMessage,
@@ -18,7 +19,7 @@ import {
 	staticMessage,
 	timingMessage,
 } from "./messages.ts";
-import { countMessage } from "./motion-count.ts";
+import { countMessage, unpairedMessage } from "./motion-count.ts";
 import type { Metric, RowVerdict } from "./schema.ts";
 import {
 	checkTimingAndEasing,
@@ -106,7 +107,9 @@ export function checkMotionRow(
 			c.status === "missing"
 				? missingMessage(row.selector, row.index, c.matched)
 				: c.count
-					? countMessage(row, c.count.got, c.count.want)
+					? c.count.got < c.count.want
+						? countMessage(row, c.count.got, c.count.want)
+						: unpairedMessage(row)
 					: staticMessage(row, c.standIns);
 		const present: Metric = {
 			want: 1,
@@ -131,7 +134,8 @@ export function checkMotionRow(
 	const failures: string[] = [];
 	const focus: number[] = [];
 
-	const partial = !row.fromObserved && evidence !== null;
+	const partial = (!row.fromObserved || !row.toObserved) && evidence !== null;
+	const endUnseen = partial && !row.toObserved;
 	const start = partial
 		? unseenStartMetric(row, c, frameMs, evidence)
 		: startMetric(row, c, frameMs);
@@ -171,8 +175,8 @@ export function checkMotionRow(
 		tol.overshootPp,
 		"%",
 	);
-	metrics.overshoot = overshoot;
-	if (!overshoot.pass) {
+	if (!endUnseen) metrics.overshoot = overshoot;
+	if (!endUnseen && !overshoot.pass) {
 		failures.push(overshootMessage(row, overshoot));
 		focus.push(w.peakMs);
 	}
@@ -211,7 +215,7 @@ export function checkMotionRow(
 		failures,
 		focus.length ? focus : span,
 		[
-			...(partial ? [PARTIAL_NOTE] : []),
+			...(partial ? [endUnseen ? UNSEEN_END_NOTE : PARTIAL_NOTE] : []),
 			...(distance?.note ? [distance.note] : []),
 			...(c.notes ?? []),
 		],

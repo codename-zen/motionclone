@@ -49,3 +49,19 @@ describe("motions between rests and gaps", () => {
 		expect(pieces[0]?.at(-1)?.[1]).toBeCloseTo(810, 0);
 	});
 });
+
+describe("an overshoot that settles", () => {
+	it("stays inside its motion when the rest tolerance is wider than the overshoot", () => {
+		// A 750 px move out and back sets a 22.5 px rest tolerance; the last move of 290 px overshoots by 26 px.
+		const out = (t: number) => 750 * (ramp(t, 400, 300) - ramp(t, 1500, 300));
+		const rise = (p: number) => 1.09 * (1 - (1 - p) ** 2);
+		const settle = (p: number) => 0.09 * (1 - p * p * (3 - 2 * p));
+		const last = (t: number) =>
+			t < 3350 ? rise(ramp(t, 3000, 350)) : 1 + settle(ramp(t, 3350, 450));
+		const v = (t: number) => 400 + out(t) + 290 * (t < 3000 ? 0 : last(t));
+		const pieces = splitAtRests(series(v, 4600), 0.5);
+		const move = pieces.at(-1) as Series;
+		expect(Math.max(...move.map((p) => p[1]))).toBeCloseTo(716, 0);
+		expect(move.at(-1)?.[1]).toBeCloseTo(690, 0);
+	});
+});

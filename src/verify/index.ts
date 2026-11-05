@@ -117,6 +117,7 @@ export async function verifyMeasured(
 	let coverage: Coverage | null = null;
 	let look: Verdict["look"] = null;
 	let measuredTrack: Track | null = null;
+	const unpaired: string[] = [];
 	if (errors.length === 0) {
 		const renamed = await withCloneEdges(
 			clone,
@@ -136,7 +137,7 @@ export async function verifyMeasured(
 		const measured = new Map<string, CloneMotion>(
 			specRows.map((r) => [
 				r.id,
-				measureClone(idx, r, wanted.get(propertyKey(r))),
+				measureClone(idx, r, wanted.get(propertyKey(r)), specRows),
 			]),
 		);
 		const fromPixels = specRows.filter((r) =>
@@ -164,7 +165,8 @@ export async function verifyMeasured(
 		const model = observationModel(refCap);
 		for (const r of specRows) {
 			const anchor = r.stagger ? (anchors.get(r.stagger.after) ?? null) : null;
-			const evidence = r.fromObserved ? null : evidenceOf(refTrack, r, model);
+			const evidence =
+				r.fromObserved && r.toObserved ? null : evidenceOf(refTrack, r, model);
 			rows.push({
 				...checkMotionRow(
 					r,
@@ -176,7 +178,7 @@ export async function verifyMeasured(
 				advisory: advisoryReason(r),
 			});
 		}
-		flagExtraMotions(rows, specRows, idx);
+		flagExtraMotions(rows, specRows, idx, refTrack, unpaired);
 		for (const s of spec.still) rows.push(checkStill(s, idx));
 		const threshold = opts.pixelThreshold ?? DEFAULT_PIXEL_THRESHOLD;
 		pixel = video
@@ -227,6 +229,7 @@ export async function verifyMeasured(
 		fidelity,
 		setupErrors: errors,
 		rows,
+		unpaired,
 		pixel,
 		look,
 		warnings: errors.length

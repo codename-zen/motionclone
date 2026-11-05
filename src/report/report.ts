@@ -147,6 +147,10 @@ export function renderReport(v: Verdict): string {
 	out.push(
 		...advisoryLines(v.rows.filter((r) => r.advisory !== null)),
 		...section("Partly observed", partlyObservedLines(v.rows)),
+		...section(
+			"Unpaired motions",
+			v.unpaired.map((m) => `- ${m}`),
+		),
 		...section("Fix", [
 			...checked
 				.filter((r) => !r.pass)

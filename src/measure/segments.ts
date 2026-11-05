@@ -11,25 +11,33 @@ const MOTION_SHARE = 0.25;
 const NET_RESTS = 4;
 const GAP_RESTS = 2;
 
-/** Index ranges [first, last] where the value stays within `tol` for at least REST_MS and REST_FRAMES. */
+/**
+ * Index ranges [first, last] where the value stays within `tol` for at least REST_MS and REST_FRAMES. A rest that
+ * runs straight on into the next one, without a step over `tol` between them, is one rest: an overshoot that
+ * settles holds no stop at its peak.
+ */
 function restRuns(series: Series, tol: number): [number, number][] {
 	const runs: [number, number][] = [];
+	const v = (k: number) => (series[k] as Series[number])[1];
 	let i = 0;
 	while (i < series.length) {
-		let lo = (series[i] as Series[number])[1];
+		let lo = v(i);
 		let hi = lo;
 		let j = i;
 		while (j + 1 < series.length) {
-			const v = (series[j + 1] as Series[number])[1];
-			if (Math.max(hi, v) - Math.min(lo, v) > tol) break;
-			lo = Math.min(lo, v);
-			hi = Math.max(hi, v);
+			const next = v(j + 1);
+			if (Math.max(hi, next) - Math.min(lo, next) > tol) break;
+			lo = Math.min(lo, next);
+			hi = Math.max(hi, next);
 			j++;
 		}
 		const ms =
 			(series[j] as Series[number])[0] - (series[i] as Series[number])[0];
 		if (j - i + 1 >= REST_FRAMES && ms >= REST_MS) {
-			runs.push([i, j]);
+			const prev = runs.at(-1);
+			if (prev && prev[1] === i - 1 && Math.abs(v(i) - v(i - 1)) <= tol)
+				prev[1] = j;
+			else runs.push([i, j]);
 			i = j + 1;
 		} else i++;
 	}
@@ -76,6 +84,27 @@ function splitAtGaps(series: Series): Series[] {
 }
 
 const netOf = (s: Series) => Math.abs((s.at(-1)?.[1] ?? 0) - (s[0]?.[1] ?? 0));
+
+/**
+ * The piece breaks off while it still moves: no reading of the series follows its last one for longer than a gap
+ * (REST_MS and three frames), up to the clip's last frame at `lastMs`, and its last readings are not a rest. The
+ * element left what the tracker sees in mid-motion, so the motion's end value is not seen.
+ */
+export function endsUnseen(
+	series: Series,
+	piece: Series,
+	minRange: number,
+	frameMs: number,
+	lastMs: number,
+): boolean {
+	const last = piece.at(-1);
+	if (!last || piece.length < REST_FRAMES) return false;
+	const next = series.find((p) => p[0] > last[0]);
+	if ((next?.[0] ?? lastMs) - last[0] <= Math.max(REST_MS, 3 * frameMs))
+		return false;
+	const tol = Math.max(minRange, REST_SHARE * rangeOf(series));
+	return rangeOf(piece.slice(-REST_FRAMES)) > tol;
+}
 
 /**
  * The series cut into one piece per motion, at rests of at least REST_MS and at gaps without readings that long;

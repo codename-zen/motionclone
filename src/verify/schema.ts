@@ -178,6 +178,8 @@ export const Verdict = z.object({
 	fidelity: z.enum(["motion", "look", "pixel"]),
 	setupErrors: z.array(z.string()),
 	rows: z.array(RowVerdict),
+	/** Clone motions no row pairs with, where the reference does not show the element; they never fail. */
+	unpaired: z.array(z.string()).default([]),
 	pixel: PixelResult.nullable(),
 	/** Look rows and the structure score; null for motion fidelity and in older verdicts. */
 	look: LookResult.nullable().default(null),

@@ -178,7 +178,7 @@ describe("video of a page that flips its background while a sheet slides, rebuil
 		const body = v.look?.rows.find((r) => r.id === "sheet[0].look.type#1");
 		expect(body?.diff).toBeLessThan(-0.2);
 		expect(body?.message).toMatch(
-			/^sheet\[0\] text cap height [\d.]+ px, want [\d.]+ px \(-\d+ %, allowed ±8 %\)$/,
+			/^sheet\[0\] text cap height [\d.]+ px, want [\d.]+ px \(-\d+ %, allowed ±8 %\); the line at x \d+, baseline y \d+ px \([\d.]+ px\) reads [\d.]+ px in the clone at x \d+, baseline y \d+ px(;|$)/,
 		);
 		expect(Math.max(...text("small"))).toBeLessThan(0.75);
 		expect(v.look?.structure?.pass).toBe(false);

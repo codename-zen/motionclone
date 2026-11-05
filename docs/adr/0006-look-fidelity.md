@@ -135,6 +135,19 @@ On `sheet-flip` the dark state reads background `#111113`, the panel edge at 536
 A page clone passes all its rows; a grey dark state fails only `dark.look.background`, square corners only `dark.look.panel.radius`, a sheet 40 px lower `dark.look.panel.top` and other dark rows; none of them fails a row of the light state.
 On the phone recording the dark state reads the panel at 577 px with a 42.4 px radius; the rebuild (CSS radius 40) reads 576 px and 40 px.
 
+## Decision: hidden regions and named lines
+
+On the Typefully sidebar recording, `info[0].look.background` failed with "info[0] is not tracked in the clone" although the clone tracked `.details` and mapped it to `info`.
+The side panel is closed at the last frame in both recordings: the reference region was lost there (opacity 0) and its row was read from the stale box, and the clone's panel lay outside the frame, so it had no region.
+A tracked element now has a look on a frame only while its opacity is above 0.01, as visible means for style records.
+A region the group's rest frame does not show gets its rows from the latest rest frame of the same state that shows it; the row carries that frame as its `state`, its label gives the time, and verify reads the clone at that frame.
+On the recording, the info rows come from the plateau at 3833 ms and pass against the open panel of the rebuild.
+When the clone tracks the element but does not show it at that frame, the row says it is outside the frame or hidden instead of "not tracked".
+
+On the Amie split view, a tester matched type rows to lines by hand from `look.json`, because "text cap height 14.4 px, want 12.1 px" said nothing about where.
+A type row now keeps every reference line with the clone line read in its place (`lines` in the verdict, CSS px), and its message names them by left edge and baseline.
+A failing row names up to three lines whose own pair is off by more than the tolerance; the words of a line are added when a style record of that frame has them, as for a page capture.
+
 ## Decision: the text score
 
 The blurred SSIM hides type size: blur that ignores other words also ignores smaller text.
@@ -222,4 +235,5 @@ The blurred SSIM alone passes the smaller text; the type rows and the text score
 - `SpecFile.look` and `Verdict.look` are new, nullable and default to null, so older files still parse.
 - `Verdict.fidelity` accepts `look`.
 - `PixelLook.type`, `RegionLook.type`, the `text-height` look measure, `structure.textThreshold` and the structure's `text` and `minText` are new and default to empty or null, so older files still parse.
+- `LookRowVerdict.lines` is new and defaults to empty, so older verdicts still parse.
 - `TypeLine.basis` and `glyphs`, `RegionLook.text` and `textShare`, `PixelLook.outsideText`, `outsideTextShare` and `panel`, `LookRow.state` and the measures `region-text-colour`, `outside-text-colour`, `panel-edge` and `panel-radius` are new with defaults, so older files still parse; a look.json written before them gives none of the new rows.

@@ -101,22 +101,29 @@ const sameRows = (a: TypeLine, b: TypeLine, screenHeight: number) =>
 	Math.min(a.y, b.y) >
 	Math.max(a.y - a.cap / screenHeight, b.y - b.cap / screenHeight);
 
+/** A reference line and the clone line in its place. */
+export interface LinePair {
+	want: RankedLine;
+	got: TypeLine;
+}
+
 /**
- * Cap heights of the clone's lines in the places of the reference's lines. A column with as many lines as the
- * reference's pairs them in order, so a line moved by a larger or smaller line above it is still found; otherwise the
- * clone line nearest the reference baseline that shares rows with it stands for it. Either way within MOVED_CAPS cap
- * heights. A reference line with no such line in the clone gets none: other words, not another size.
+ * The clone's lines in the places of the reference's lines. A column with as many lines as the reference's pairs
+ * them in order, so a line moved by a larger or smaller line above it is still found; otherwise the clone line nearest
+ * the reference baseline that shares rows with it stands for it. Either way within MOVED_CAPS cap heights. A reference
+ * line with no such line in the clone gets none: other words, not another size.
  */
-export function capsAt(
+export function pairsAt(
 	want: readonly RankedLine[],
 	got: readonly TypeLine[],
 	screenHeight: number,
-): number[] {
+): LinePair[] {
 	return want.flatMap((r) => {
 		const limit = (MOVED_CAPS * r.cap) / screenHeight;
 		const column = columnOf(r, got);
 		const paired = column.length === r.count ? column[r.rank] : undefined;
-		if (paired && Math.abs(paired.y - r.y) <= limit) return [paired.cap];
+		if (paired && Math.abs(paired.y - r.y) <= limit)
+			return [{ want: r, got: paired }];
 		let best: TypeLine | null = null;
 		let gap = limit;
 		for (const c of column) {
@@ -126,6 +133,13 @@ export function capsAt(
 				gap = d;
 			}
 		}
-		return best ? [best.cap] : [];
+		return best ? [{ want: r, got: best }] : [];
 	});
 }
+
+/** Cap heights of the clone's lines in the places of the reference's lines (`pairsAt`). */
+export const capsAt = (
+	want: readonly RankedLine[],
+	got: readonly TypeLine[],
+	screenHeight: number,
+): number[] => pairsAt(want, got, screenHeight).map((p) => p.got.cap);

@@ -9,7 +9,6 @@ import {
 	trackedEntry,
 } from "../look/derive.ts";
 import type { PageStyles, PixelLook, StyleEntry } from "../look/schema.ts";
-import { capsAt } from "../look/type.ts";
 import type { LookRow } from "../spec/look-schema.ts";
 import {
 	accentVerdict,
@@ -18,9 +17,9 @@ import {
 	colourVerdict,
 	edgeVerdict,
 	missing,
-	notComparable,
 	sizeVerdict,
 } from "./look-checks.ts";
+import { typeVerdict } from "./look-type.ts";
 import type { LookRowVerdict } from "./schema.ts";
 
 /** What the clone shows on the reference's rest frame of a row, read the way the reference was. */
@@ -31,6 +30,13 @@ export interface CloneLook {
 	screen: Screen;
 	/** The clone selector and index that stand in for a reference element. */
 	target(selector: string, index: number): { selector: string; index: number };
+	/** Element keys ("sel[i]", --map names) the clone track holds on any frame. */
+	tracked: ReadonlySet<string>;
+	/** Time of the clone frame the pixels come from, ms. */
+	t: number;
+	/** Style records of the reference and the clone at the row's frame, when their look.json has one there. */
+	refStylesAt: PageStyles | null;
+	stylesAt: PageStyles | null;
 }
 
 function styleValue(
@@ -111,7 +117,9 @@ function pixelValue(
 			if (!reg)
 				return missing(
 					r,
-					`${key} is not tracked in the clone; capture it with --track and --map`,
+					clone.tracked.has(key)
+						? `${key} is outside the clone's frame or hidden at ${Math.round(clone.t)} ms; the reference shows it there`
+						: `${key} is not tracked in the clone; capture it with --track and --map`,
 				);
 			if (r.measure === "region-background")
 				return colourVerdict(r, reg.background);
@@ -143,14 +151,12 @@ function pixelValue(
 				})),
 				clone.screen,
 			);
-		case "text-height": {
-			const caps = capsAt(r.lines, p.lines, clone.screen.h).sort(
-				(a, b) => a - b,
-			);
-			if (caps.length === 0)
-				return notComparable(r, "no matching text line in the clone");
-			return sizeVerdict(r, caps[caps.length >> 1] as number);
-		}
+		case "text-height":
+			return typeVerdict(r, p.lines, {
+				screen: clone.screen,
+				refStyles: clone.refStylesAt,
+				cloneStyles: clone.stylesAt,
+			});
 		default:
 			return missing(r, `${r.measure} is not measured from pixels`);
 	}

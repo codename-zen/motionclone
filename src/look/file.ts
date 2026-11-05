@@ -23,11 +23,17 @@ export async function readLook(dir: string): Promise<LookFile | null> {
 	}
 }
 
-/** Every tracked element's box on one frame, keyed like spec rows: "sel[i]"; surface edges are positions, not looks. */
+// An element at or under this opacity is hidden: its box shows what lies behind it.
+const HIDDEN = 0.01;
+
+/**
+ * Every visible tracked element's box on one frame, keyed like spec rows: "sel[i]". Surface edges are positions, not
+ * looks; a hidden element, such as a closed panel or a video region whose content is gone, has no look there.
+ */
 export const regionsAt = (frame: TrackFrame | undefined): LookRegion[] =>
 	Object.entries(frame?.elements ?? {}).flatMap(([sel, list]) =>
 		(isEdge(sel) ? [] : list)
-			.filter((e) => e.w > 0 && e.h > 0)
+			.filter((e) => e.w > 0 && e.h > 0 && e.opacity > HIDDEN)
 			.map((e) => ({
 				key: `${sel}[${e.index}]`,
 				box: { x: e.x, y: e.y, w: e.w, h: e.h },

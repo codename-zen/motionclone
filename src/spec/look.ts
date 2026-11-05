@@ -14,7 +14,7 @@ import type { LookFile, PageStyles, StyleEntry } from "../look/schema.ts";
 import { BACKGROUND, type Draft, rowsOf, type Scope } from "./look-draft.ts";
 import { pixelDrafts } from "./look-pixels.ts";
 import { type LookRow, LookSpec } from "./look-schema.ts";
-import { restGroups } from "./look-states.ts";
+import { type RestGroup, restGroups } from "./look-states.ts";
 
 const example = (e: StyleEntry) =>
 	`${e.tag} "${e.text.slice(0, 24)}", weight ${e.fontWeight}, ${e.fontFamily}`;
@@ -123,6 +123,38 @@ function pageRows(styles: PageStyles, screen: Screen, scope: Scope): LookRow[] {
 	return rowsOf("style", out, scope);
 }
 
+const keyOf = (t: { selector: string; index: number }) =>
+	`${t.selector}[${t.index}]`;
+
+/**
+ * Rows of the regions the group's rest frame does not show, such as a panel that is closed there: each from the latest
+ * rest frame of the group that shows it, and checked on the clone at that frame.
+ */
+function hiddenRegionRows(group: RestGroup, screen: Screen): LookRow[] {
+	const shown = new Set(group.state.pixels.regions.map((r) => r.key));
+	const name = group.scope.state?.name;
+	const out: LookRow[] = [];
+	for (const s of [...group.members].reverse()) {
+		const keys = s.pixels.regions
+			.map((r) => r.key)
+			.filter((k) => !shown.has(k));
+		if (keys.length === 0) continue;
+		for (const k of keys) shown.add(k);
+		const t = Math.round(s.t);
+		const drafts = pixelDrafts(s.pixels, screen).filter(
+			(d) => d.target && keys.includes(keyOf(d.target)),
+		);
+		out.push(
+			...rowsOf("pixels", drafts, {
+				state: { name: name ?? "rest", frame: s.frame, t },
+				prefix: group.scope.prefix,
+				suffix: ` (${name ? `${name}, ` : ""}rest at ${t} ms)`,
+			}),
+		);
+	}
+	return out;
+}
+
 /**
  * Look rows from the last rest frame of each of the reference's rest states: computed styles for the last state of a
  * page, pixels otherwise. The structure score covers every rest frame.
@@ -136,10 +168,13 @@ export function draftLook(look: LookFile, clip: ClipRect): LookSpec {
 		frames: look.states
 			.filter((s) => s.rest || s.label === "last")
 			.map((s) => ({ label: s.label, frame: s.frame, t: s.t })),
-		rows: groups.flatMap(({ state, scope, last }) =>
-			last && state.page
-				? pageRows(state.page, screen, scope)
-				: rowsOf("pixels", pixelDrafts(state.pixels, screen), scope),
+		rows: groups.flatMap((g) =>
+			g.last && g.state.page
+				? pageRows(g.state.page, screen, g.scope)
+				: [
+						...rowsOf("pixels", pixelDrafts(g.state.pixels, screen), g.scope),
+						...hiddenRegionRows(g, screen),
+					],
 		),
 	});
 }

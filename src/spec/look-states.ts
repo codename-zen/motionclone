@@ -11,6 +11,8 @@ export interface RestGroup {
 	scope: Scope;
 	/** True for the group of the last state, whose rows keep their plain ids. */
 	last: boolean;
+	/** Every rest frame of the group, in time order. */
+	members: LookState[];
 }
 
 /**
@@ -31,7 +33,8 @@ export function restGroups(look: LookFile): RestGroup[] {
 		if (g) g.push(s);
 		else groups.push([s]);
 	}
-	if (groups.length <= 1) return [{ state: last, scope: LAST, last: true }];
+	if (groups.length <= 1)
+		return [{ state: last, scope: LAST, last: true, members: rest }];
 	const seen = new Map<string, number>();
 	return groups.map((g) => {
 		const isLast = g.includes(last);
@@ -47,6 +50,7 @@ export function restGroups(look: LookFile): RestGroup[] {
 		return {
 			state,
 			last: isLast,
+			members: g,
 			scope: {
 				state: { name, frame: state.frame, t },
 				prefix: isLast ? "" : `${name}.`,

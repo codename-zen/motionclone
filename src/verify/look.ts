@@ -80,16 +80,34 @@ export async function verifyLook(
 			),
 		);
 	}
-	const base: Omit<CloneLook, "pixels"> = {
-		styles: (await readLook(x.cloneDir))?.states.at(-1)?.page ?? null,
+	const [refLook, cloneLook] = await Promise.all([
+		readLook(x.refDir),
+		readLook(x.cloneDir),
+	]);
+	const stylesAt = (l: typeof refLook, frame: number) =>
+		l?.states.find((s) => s.frame === frame)?.page ?? null;
+	const base: Omit<CloneLook, "pixels" | "t" | "refStylesAt" | "stylesAt"> = {
+		styles: cloneLook?.states.at(-1)?.page ?? null,
 		screen: { x: clip.x, y: clip.y, w: clip.width, h: clip.height },
 		target: (selector, index) => cloneTarget(x.map, selector, index),
+		tracked: new Set(
+			x.cloneTrack.frames.flatMap((f) =>
+				Object.entries(f.elements).flatMap(([sel, list]) =>
+					list.map((e) => `${sel}[${e.index}]`),
+				),
+			),
+		),
 	};
 	const rows = look.rows.map((r) =>
-		checkLookRow(r, { ...base, pixels: pixelsAt.get(frameOf(r)) ?? null }),
+		checkLookRow(r, {
+			...base,
+			pixels: pixelsAt.get(frameOf(r)) ?? null,
+			t: x.cloneTrack.frames[frameOf(r)]?.t ?? 0,
+			refStylesAt: stylesAt(refLook, r.state?.frame ?? last?.frame ?? 0),
+			stylesAt: stylesAt(cloneLook, frameOf(r)),
+		}),
 	);
 	// The reference's text bands per rest frame, from its own look.json.
-	const refLook = await readLook(x.refDir);
 	const bands = new Map(
 		(refLook?.states ?? []).map((s) => [
 			s.frame,

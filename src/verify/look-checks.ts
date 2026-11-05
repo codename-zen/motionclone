@@ -9,7 +9,7 @@ const pct = (v: number) => `${v > 0 ? "+" : ""}${Math.round(v * 100)} %`;
 
 type Base = Pick<
 	LookRowVerdict,
-	"id" | "label" | "measure" | "method" | "comparable"
+	"id" | "label" | "measure" | "method" | "comparable" | "lines"
 >;
 const base = (r: LookRow): Base => ({
 	id: r.id,
@@ -17,6 +17,7 @@ const base = (r: LookRow): Base => ({
 	measure: r.measure,
 	method: r.method,
 	comparable: true,
+	lines: [],
 });
 
 export function missing(r: LookRow, why: string): LookRowVerdict {

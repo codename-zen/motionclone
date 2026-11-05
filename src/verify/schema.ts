@@ -48,6 +48,20 @@ export const PixelResult = z.object({
 	skipped: z.string().nullable(),
 });
 
+/** A text line of a type row: left edge and baseline in CSS px, cap height, and its words when a style record names them. */
+export const LookLine = z.object({
+	x: z.number(),
+	y: z.number(),
+	cap: z.number(),
+	text: z.string().nullable().default(null),
+});
+
+/** A reference line of a type row and the clone line read in its place; null when the clone has none there. */
+export const LookLinePair = z.object({
+	reference: LookLine,
+	clone: LookLine.nullable(),
+});
+
 export const LookRowVerdict = z.object({
 	id: z.string(),
 	label: z.string(),
@@ -65,6 +79,8 @@ export const LookRowVerdict = z.object({
 	message: z.string(),
 	/** False when the clone's content offers nothing to compare, such as no text line in the place of one: never fails. */
 	comparable: z.boolean().default(true),
+	/** Type rows: each reference line with the clone line in its place; empty for other rows and in older verdicts. */
+	lines: z.array(LookLinePair).default([]),
 });
 
 export const StructureFrame = z.object({
@@ -189,6 +205,7 @@ export type PixelResult = z.output<typeof PixelResult>;
 export type Guardrail = z.output<typeof Guardrail>;
 export type ReducedMotion = z.output<typeof ReducedMotion>;
 export type LookRowVerdict = z.output<typeof LookRowVerdict>;
+export type LookLine = z.output<typeof LookLine>;
 export type StructureFrame = z.output<typeof StructureFrame>;
 export type StructureResult = z.output<typeof StructureResult>;
 export type LookResult = z.output<typeof LookResult>;

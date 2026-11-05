@@ -28,7 +28,9 @@ Real app recordings, measured automatically and rebuilt with a different look.
 
 ![Amie split view: the reference and a rebuild of the drag between calendar and todos](.github/assets/bench-amie.gif)
 
-Clips of Google Pay and Amie belong to their owners and are shown only to compare the motion.
+![Typefully sidebars: the reference and a rebuild of the sliding sidebars](.github/assets/bench-typefully.gif)
+
+Clips of Google Pay, Amie and Typefully belong to their owners and are shown only to compare the motion.
 
 ## Install
 

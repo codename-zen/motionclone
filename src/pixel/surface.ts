@@ -4,11 +4,20 @@ import type { Track } from "../measure/elements.ts";
 import { lost } from "../measure/series.ts";
 import { readPng } from "../verify/pixels.ts";
 import { type EdgeBand, edgesIn } from "./edge.ts";
-import { type Box, carried, lead, size, sweeps } from "./edge-belongs.ts";
+import {
+	type Box,
+	carried,
+	lead,
+	ridesRigidly,
+	size,
+	sweeps,
+} from "./edge-belongs.ts";
 import {
 	type EdgeCandidate,
+	edgeKinds,
 	followEdge,
 	type Span,
+	STALE,
 	START_STEP,
 } from "./edge-follow.ts";
 import { restFills } from "./edge-rest.ts";
@@ -28,9 +37,6 @@ export interface EdgeSetup {
 
 // An element must travel this far, CSS px, for a surface edge around it to be looked for.
 const MIN_TRAVEL = 8;
-// An edge that keeps its offset to the element within this (CSS px, or share of the travel) rides on it rigidly.
-const RIGID_PX = 3;
-const RIGID_SHARE = 0.05;
 // Frames that must show the edge apart from the element at rest.
 const MIN_FRAMES = 3;
 // The element counts as at rest where its box moves less than this between frames, CSS px.
@@ -73,9 +79,10 @@ const unseen = (e: TrackedElement) =>
 const KEEP_STEP = START_STEP / 2;
 
 /**
- * Per frame, the position (CSS px along the axis) of the surface edge in the band that starts nearest to the
- * element's box and is followed from frame to frame (edge-follow.ts); null where it does not show or the element
- * has no reading, as on frames a video tracker lost or a recording repeated. Page and video frames are read alike.
+ * Per frame, the position (CSS px along the axis) of an edge in the band that starts nearest to the element's box
+ * and is followed from frame to frame (edge-follow.ts); null where it does not show or the element has no reading,
+ * as on frames a video tracker lost or a recording repeated. One such track per kind of edge the band holds, the
+ * kind nearest the element at rest first. Page and video frames are read alike.
  */
 export async function readEdges(
 	dir: string,
@@ -84,7 +91,7 @@ export async function readEdges(
 	setup: EdgeSetup,
 	selector: string,
 	index: number,
-): Promise<(number | null)[]> {
+): Promise<(number | null)[][]> {
 	const boxes = boxesOf(track, selector, index);
 	const { axis, band } = setup;
 	const cands: (EdgeCandidate[] | null)[] = [];
@@ -126,7 +133,39 @@ export async function readEdges(
 			})),
 		);
 	}
-	return followEdge(cands, spans);
+	return edgeKinds(cands, spans).map((kind) => followEdge(cands, spans, kind));
+}
+
+/**
+ * The surface edge of the first kind whose edge belongs to the element's surface (edgeElements), so lines that ride
+ * on the content, such as rules of a list that scrolls with it, give way to the panel edge behind them. With
+ * `always`, the nearest kind's edge when none belongs.
+ */
+export function surfaceEdge(
+	track: Track,
+	selector: string,
+	index: number,
+	setup: EdgeSetup,
+	kinds: readonly (readonly (number | null)[])[],
+	always = false,
+	clip: ClipRect | null = null,
+): (TrackedElement | null)[] | null {
+	for (const edges of kinds) {
+		const found = edgeElements(
+			track,
+			selector,
+			index,
+			setup,
+			edges,
+			false,
+			clip,
+		);
+		if (found) return found;
+	}
+	const nearest = kinds[0];
+	return always && nearest
+		? edgeElements(track, selector, index, setup, nearest, true, clip)
+		: null;
 }
 
 const median = (v: number[]) => [...v].sort((a, b) => a - b)[v.length >> 1];
@@ -168,8 +207,7 @@ export function edgeElements(
 	const placed = leads.filter((v) => v !== null);
 	const travel = Math.max(...placed) - Math.min(...placed);
 	const offsets = seen.map((s) => s.offset);
-	const apart = Math.max(...offsets) - Math.min(...offsets);
-	const rigid = apart <= Math.max(RIGID_PX, RIGID_SHARE * travel);
+	const rigid = ridesRigidly(seen, travel, STALE);
 	const belongs =
 		carried(seen, leads, edges, travel) ||
 		sweeps(seen, boxes, edges, axis, travel);

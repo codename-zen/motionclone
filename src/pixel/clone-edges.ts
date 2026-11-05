@@ -5,11 +5,11 @@ import type { TrackedElement } from "../capture/types.ts";
 import type { Track } from "../measure/elements.ts";
 import { placeRegion } from "../verify/progress.ts";
 import {
-	edgeElements,
 	edgeOwner,
 	edgeSetup,
 	isEdge,
 	readEdges,
+	surfaceEdge,
 	withEdgeTrack,
 } from "./surface.ts";
 
@@ -50,7 +50,7 @@ export async function withCloneEdges(
 				axis: setup.axis,
 				band: placeRegion(setup.band, refClip, cloneClip),
 			};
-			const edges = await readEdges(
+			const kinds = await readEdges(
 				cloneDir,
 				clone,
 				cloneClip,
@@ -58,12 +58,12 @@ export async function withCloneEdges(
 				owner,
 				index,
 			);
-			const elements = edgeElements(
+			const elements = surfaceEdge(
 				clone,
 				owner,
 				index,
 				placed,
-				edges,
+				kinds,
 				true,
 				cloneClip,
 			);

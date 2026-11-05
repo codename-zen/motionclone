@@ -431,6 +431,11 @@ Frames where the tracker lost the element, and repeated frames, read no edge.
 Thin divider lines count as edges: at most 4 px wide, at least 6 levels from both sides, which agree, on three quarters of the lines; they are used when they are what lies nearest the element at rest.
 An edge also belongs to the element when it sweeps across it: it travels at least twice as far as the element and over half its size, and lies across the element's box on three quarters of the frames where it moves.
 That is a panel revealing or covering content that stays in place.
+Each kind of edge in the band (steps lighter on one side, lines of one polarity) is followed on its own, the kind nearest the element at rest first, then by how many frames show one, and the first whose edge belongs to the element and does not ride rigidly on it is the surface edge.
+On the Amie split view with the first tester's regions, the lines nearest the lunch event were the hour rules of the calendar, which scroll with it; the follower kept to them, switched between rules as they scrolled away, and the result was neither rigid nor carried, so `lunch::edge` was no longer drafted.
+The calendar's lower edge (the top of the dark strip) is the next kind, and it is followed again.
+Whether an edge rides rigidly is judged on each stretch the follower kept (readings at most three frames apart), past the first two picks of each, so rules of the content picked up one after another as they scroll away count as riding on the element.
+On the clone, verify picks the kind the same way, and falls back to the nearest kind's edge when none belongs.
 Before the edge first shows, it holds its first position unobserved, so its first row is partly observed; a held rest position must come from a frame where the element had not left its rest.
 `verify` writes the clone's edge readings to `clone-edges.json`.
 

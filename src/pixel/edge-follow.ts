@@ -6,7 +6,7 @@ export interface EdgeCandidate {
 }
 
 /** Which edges are followed: steps lighter on one side, or lines of one polarity. */
-interface Kind {
+export interface Kind {
 	sign: number;
 	line: boolean;
 }
@@ -25,7 +25,7 @@ const MOTION_SHARE = 0.5;
 // An edge that moved less than this on its last step (CSS px) stood still.
 const STILL_PX = 0.5;
 // Readings this many frames apart, or more, no longer predict each other.
-const STALE = 3;
+export const STALE = 3;
 // The element rests where its box moves less than this between frames, CSS px.
 const REST_PX = 0.25;
 
@@ -85,6 +85,37 @@ function kindOf(
 }
 
 /**
+ * Every kind of edge the frames hold a strong candidate of, the kind of the edge nearest the element at rest first
+ * and then by how many frames show one; the caller follows the first whose edge belongs to the element's surface.
+ */
+export function edgeKinds(
+	cands: readonly (readonly EdgeCandidate[] | null)[],
+	spans: readonly Span[],
+): Kind[] {
+	const first = kindOf(cands, spans);
+	const counts = new Map<string, { kind: Kind; n: number }>();
+	for (const c of cands)
+		for (const kind of new Set(
+			(c ?? [])
+				.filter((e) => e.line || Math.abs(e.step) >= START_STEP)
+				.map((e) => `${Math.sign(e.step)}|${e.line}`),
+		)) {
+			const [sign, line] = kind.split("|");
+			const entry = counts.get(kind) ?? {
+				kind: { sign: Number(sign), line: line === "true" },
+				n: 0,
+			};
+			entry.n++;
+			counts.set(kind, entry);
+		}
+	const rest = [...counts.values()]
+		.filter((e) => e.kind.sign !== first.sign || e.kind.line !== first.line)
+		.sort((a, b) => b.n - a.n)
+		.map((e) => e.kind);
+	return [first, ...rest];
+}
+
+/**
  * One surface edge followed through the clip: on each frame the candidate of the same kind nearest to where
  * the edge was predicted, from its last reading moved with the element, or with its own last velocity (an edge that
  * sweeps past content that stays, as a panel revealing it). Weaker steps continue an edge, so it does not flicker to
@@ -95,8 +126,8 @@ function kindOf(
 export function followEdge(
 	cands: readonly (readonly EdgeCandidate[] | null)[],
 	spans: readonly Span[],
+	kind: Kind = kindOf(cands, spans),
 ): (number | null)[] {
-	const kind = kindOf(cands, spans);
 	const out: (number | null)[] = cands.map(() => null);
 	const seen: { k: number; pos: number }[] = [];
 	cands.forEach((c, k) => {

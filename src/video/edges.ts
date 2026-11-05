@@ -3,10 +3,10 @@ import type { TrackedElement } from "../capture/types.ts";
 import type { Track } from "../measure/elements.ts";
 import {
 	EDGE,
-	edgeElements,
 	edgeSetup,
 	isEdge,
 	readEdges,
+	surfaceEdge,
 	withEdgeTrack,
 } from "../pixel/surface.ts";
 
@@ -40,13 +40,13 @@ export async function trackSurfaceEdges(
 		for (const index of indexes) {
 			const setup = edgeSetup(track, selector, index);
 			if (!setup) continue;
-			const edges = await readEdges(dir, track, clip, setup, selector, index);
-			const elements = edgeElements(
+			const kinds = await readEdges(dir, track, clip, setup, selector, index);
+			const elements = surfaceEdge(
 				track,
 				selector,
 				index,
 				setup,
-				edges,
+				kinds,
 				false,
 				clip,
 			);

@@ -118,12 +118,40 @@ A swing too small to keep is cut off the motion after its rest instead of joinin
 A series with one motion stays whole, so a hold shorter than 250 ms stays inside its motion.
 Each motion is its own row: `sheet[0].y`, `sheet[0].y#2`, `sheet[0].y#3`, numbered like progress rows, with its own timing, easing, distance and declared animation.
 A pulse with a rest at its peak becomes two rows, out and back; without one it still ends where it starts and is dropped.
-Verify pairs row #n with the clone's n-th motion of that property in time.
-A clone with fewer motions fails the missing rows with "sheet[0] y has 3 motions, want 4", and one with more fails the last row the same way.
+Verify pairs the rows of a property with the clone's motions of it by time and shape, not by number (see pairing below).
+A clone with fewer motions fails the rows left without a partner with "sheet[0] y has 3 motions, want 4".
 A property with a single row is compared against the clone's whole series when the clone moves it once.
 When the clone moves it several times, the row is paired with the clone motion that shares the most time with the row, or else starts nearest it.
 On the phone recording the clone's sheet slid four times against one row at 599 ms; it now reads 604 ms over 289 ms against 605 over 293, where it read a start of -546404056958217 ms.
 Between motions, a piece that jumps from its rest to its far value in one frame and eases back starts at the jump: the element was placed off its end, then animated in.
+A rest that runs straight on into the next one, with no step over the rest tolerance between them, is one rest.
+On the Amie split view recording the strip's last drag overshoots by 26 px and settles, while the series' range (746 px, with the strip pushed past both screen edges) sets a rest tolerance of 22 px.
+The overshoot peak was a rest of its own, so the row ended at the peak's start (426.5 px, overshoot 0) and the settle was cut off; the clone, with a wider range, kept both, and failed on easing and overshoot.
+The row now ends where the strip settles (410.7 px, overshoot 8.6 %, clone 8.2 %).
+
+## Decision: pairing motions
+
+A reference that misses one motion shifted every later pair: the Amie recording loses the strip while it morphs into a pill at the top, so its sixth motion (the drag back) was paired with the clone's sixth (the return from the top) and failed by 1032 ms, and the clone's seventh was reported as an extra.
+Rows and clone motions of one property are now paired in time order by the least total cost, with dynamic programming over both lists.
+A pair costs the difference of their starts in seconds, plus 1 when they go opposite ways, plus 0.5 for each halving or doubling of the distance (at most 1; a longer clone move costs nothing against a lower-bound distance).
+Leaving a row or a clone motion unpaired costs 1, so a pair is kept only while it costs less than 2.
+A row left without a partner fails: "has 3 motions, want 4" when the clone makes fewer motions than the row numbers ask for, otherwise "no clone motion is like the one from 2329 ms".
+A clone motion left over fails the row nearest it in time when the reference shows the element holding still there: on most frames of the motion the reference reads the property, none of them filled in, cut off or repeated, and those readings move less than a quarter of the clone's move.
+Otherwise the reference cannot say the motion is extra (the element was lost, faded or cut off), and the verdict lists it under `unpaired`, which never fails.
+A property with one row keeps the rule above: the clone motion that shares the most time with it.
+
+## Decision: motions whose end is not seen
+
+The Amie strip slides off the bottom of the screen with an ease-in and morphs into a pill on the way; the tracker loses it after 60 of its 110 px.
+The series ran into the gap where it was lost, so the row ended at the last reading: `divider[0].y#2`, 59.6 px over 126 ms, which no complete slide matches.
+A motion piece of a box property (x, y, width or height) whose readings break off while it still moves, that is no reading follows for longer than a gap (250 ms and three frames) up to the clip's last frame and its last three readings are not within the rest tolerance, has an unseen end.
+Scale and blur readings also stop where the tracker only stopped measuring them, so their motions are left as they were.
+Such a row is fitted like an unseen start, on its readings mirrored in time: the start value is seen and the end value is solved for, with the same plausibility limits.
+Positions the tracker filled in or cut at the region edge just before it lost the element bound the end on the far side only.
+Readings the tracker held after the loss are not readings of this motion.
+The row has `toObserved: false`; its notes say the end value is extrapolated and up to which time the readings go.
+Verify places the clone's values at the reference's start value and runs the evidence check on the visible readings; the start is compared as usual, and duration, end, easing, distance and overshoot only through the evidence check.
+On Amie the slide off the bottom drafts from 2333 ms, low confidence, because the reference shows 4 px of it as plain readings and the rest as bounds; the lunch card that leaves its region at the top while it moves now passes against the clone, where its fixed end at the region edge made the clone 203 ms too long.
 
 ## Decision: motion blur is not a fade
 
@@ -152,6 +180,8 @@ It is now the lowest of four levels, recorded with its numbers in the row's `sup
 | mean tracker quality inside the motion, when reported                                                | 0.8               | 0.5          | low       |
 
 The noise is 0 for page captures, so page rows keep the old rms thresholds, and 0.03 for video.
+A fully seen row is also low when over half of its change falls between two plain readings five or more frames apart (four frames or more without a reading): the tracker did not see the motion happen, so its timing is a guess.
+On the Amie recording the strip was found on one frame between two losses, and `divider[0].x#4` (14.8 to 25 px over 65 ms, across seven frames without a reading) was drafted medium and failed against a clone whose strip never moves sideways; it is now advisory.
 Declared rows of a page capture are high, and a row whose start value was held to the visible range is low.
 Verify still compares a low row, but reports it under "Advisory (low confidence)" with its numbers and the reasons the evidence is weak; it never fails the verdict, and the summary reads, for example, "PASS (6 rows checked, 2 advisory)".
 A verdict with no motion or look row checked is not a pass: its status is `no-checks`, it reads "NO CHECKS", and the CLI exits with 3.
@@ -200,7 +230,7 @@ A DOM clone of the page passes; a clone without blur and scale fails those rows,
 
 ## Consequences
 
-- `SpecFile` has `dropped` (default empty) and `Verdict` has `status` (absent in older verdicts, which then read it from `pass`).
-- `SpecRow` has `fromObserved` (default true) and `support` (default null); `RowVerdict` has `notes` (default empty) and `advisory` (default null); the verdict summary has `advisory` (default 0); older spec and verdict files still parse, and an older spec's low rows are advisory with a reason that says no evidence was recorded.
+- `SpecFile` has `dropped` (default empty), `Verdict` has `unpaired` (default empty) and `status` (absent in older verdicts, which then read it from `pass`).
+- `SpecRow` has `fromObserved` and `toObserved` (default true) and `support` (default null); `RowVerdict` has `notes` (default empty) and `advisory` (default null); the verdict summary has `advisory` (default 0); older spec and verdict files still parse, and an older spec's low rows are advisory with a reason that says no evidence was recorded.
 - On the fade-up stagger video (ADR 0002), the opacity rows are partly observed, because opacity reads 0 before each card appears; with the tracker's `observed` fields the y rows are partly observed too, share the opacity timing and land on `easeOutExpo` within 5 ms of the declared starts and 16 ms of the 700 ms duration on Linux and Windows, and every existing video check still passes.
 - A relative distance is measured against the element's unscaled size, so a rebuild that leaves out a scale no longer fails the translate row of the same element.

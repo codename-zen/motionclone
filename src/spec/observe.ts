@@ -120,7 +120,7 @@ function boundedReading(
  * Positions the tracker filled in before it first saw the element hold its extrapolated start (ADR 0002): the
  * true start lies there or further from the end value, so they bound the start on that side only.
  */
-function boundLeadingFills(obs: Observation[]): void {
+export function boundLeadingFills(obs: Observation[]): void {
 	const to = obs.at(-1)?.lo ?? 0;
 	for (let k = 0; k < obs.length; k++) {
 		const o = obs[k] as Observation;

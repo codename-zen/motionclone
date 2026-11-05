@@ -19,6 +19,12 @@ export const EVIDENCE_TOL = 0.04;
 export const PARTIAL_NOTE =
 	"start value not visible in the reference: duration, easing, stagger and distance are checked against the readings it does show";
 
+export const UNSEEN_END_NOTE =
+	"end value not visible in the reference (the element vanished or left its region while it moved): duration, easing, distance and overshoot are checked against the readings it does show";
+
+/** The value a partly observed row is anchored at: its end value, or its start value when the end is not seen. */
+const anchorOf = (row: SpecRow) => (row.toObserved ? row.to : row.from);
+
 /** Reference readings a partly observed row is checked against, and the scale of their residuals. */
 export interface Evidence {
 	obs: ReturnType<typeof observe>["obs"];
@@ -31,19 +37,28 @@ export function evidenceOf(
 	model: ObservationModel,
 ): Evidence {
 	const motion = movingProperties(track).find((m) => motionId(m) === row.id);
+	// A motion whose end is not seen stops at its last reading: what the tracker held after that is no reading.
+	const range =
+		motion && !row.toObserved
+			? ([motion.series[0]?.[0] ?? 0, motion.series.at(-1)?.[0] ?? 0] as [
+					number,
+					number,
+				])
+			: motion && motionRange(motion);
 	const { obs } = observe(
 		track,
 		row.selector,
 		row.index,
 		row.property as Property,
 		model,
-		motion ? motionRange(motion) : undefined,
+		range || undefined,
 	);
-	return { obs, span: visibleChange(obs, row.to) };
+	return { obs, span: visibleChange(obs, anchorOf(row)) };
 }
 
 /**
- * How far the clone's own values, placed at the reference's end value, fall outside the reference readings,
+ * How far the clone's own values, placed at the reference's end value (start value when the end is not seen), fall
+ * outside the reference readings,
  * against how far the spec curve does. Absolute times, so start, stagger, duration, easing and the visible
  * distance all count.
  */
@@ -53,7 +68,9 @@ export function evidenceMetric(row: SpecRow, c: Moving, ev: Evidence): Metric {
 	const spec = (t: number) =>
 		row.to + (row.from - row.to) * (1 - curve((t - row.startMs) / spanMs));
 	const clone = (t: number) =>
-		row.to + valueAt(c.motion.series, t) - c.motion.window.to;
+		row.toObserved
+			? row.to + valueAt(c.motion.series, t) - c.motion.window.to
+			: row.from + valueAt(c.motion.series, t) - c.motion.window.from;
 	const want = boundsRmse(ev.obs, spec, ev.span);
 	const got = boundsRmse(ev.obs, clone, ev.span);
 	return {

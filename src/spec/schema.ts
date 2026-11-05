@@ -70,6 +70,8 @@ export const SpecRow = z.object({
 	to: z.number(),
 	/** False when the reference never shows the start value: `from` is extrapolated and verify checks the clone against the visible readings. */
 	fromObserved: z.boolean().default(true),
+	/** False when the reference never shows the end value (the element vanished mid-motion): `to` is extrapolated, as `from` is above. */
+	toObserved: z.boolean().default(true),
 	/** Trigger-relative ms. */
 	startMs: z.number(),
 	durationMs: ms,

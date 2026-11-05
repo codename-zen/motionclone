@@ -40,6 +40,7 @@ import {
 	SpecFile,
 	type SpecRow,
 } from "./schema.ts";
+import { endUnseen, fitUnseenEnds, type UnseenEndFit } from "./unseen-end.ts";
 
 const r1 = (v: number) => Math.round(v * 10) / 10;
 const r4 = (v: number) => Number(v.toFixed(4));
@@ -74,6 +75,7 @@ function draftRow(
 	else notes.push("measured from the track");
 	// Same free-timing deviation verify computes, so an identical clone always passes.
 	const residual = curveDeviation(fit.samples, fit.hint, easing).max;
+	const [firstMs, lastMs] = [m.series[0]?.[0] ?? 0, m.series.at(-1)?.[0] ?? 0];
 	const { confidence, support } = supportOf({
 		obs: observed.obs,
 		startMs: timing.startMs,
@@ -81,6 +83,11 @@ function draftRow(
 		rmse: timing.rmse,
 		observed: 1,
 		noise,
+		change: {
+			value: m.window.change,
+			frameMs: cap.frameMs,
+			obs: observed.obs.filter((o) => o.t >= firstMs && o.t <= lastMs),
+		},
 	});
 	return {
 		id: motionId(m),
@@ -90,6 +97,7 @@ function draftRow(
 		from: r4(m.window.from),
 		to: r4(m.window.to),
 		fromObserved: true,
+		toObserved: true,
 		startMs: r1(timing.startMs),
 		durationMs: r1(timing.durationMs),
 		easing,
@@ -110,9 +118,10 @@ function draftRow(
 function partialRow(
 	m: MovingProperty,
 	observed: Observed,
-	fit: PartialFit,
+	fit: PartialFit | UnseenEndFit,
 	noise: number,
 ): SpecRow {
+	const end = "to" in fit;
 	const { confidence, support } = supportOf({
 		obs: observed.obs,
 		startMs: fit.startMs,
@@ -128,12 +137,13 @@ function partialRow(
 		index: m.index,
 		property: m.property,
 		from: r4(fit.from),
-		to: r4(m.window.to),
-		fromObserved: false,
+		to: r4(end ? fit.to : m.window.to),
+		fromObserved: end,
+		toObserved: !end,
 		startMs: r1(fit.startMs),
 		durationMs: r1(fit.durationMs),
 		easing: fit.easing,
-		overshoot: r4(m.window.overshoot),
+		overshoot: end ? 0 : r4(m.window.overshoot),
 		relativeDistance: null,
 		distanceObserved: "full",
 		source: "measured",
@@ -147,7 +157,7 @@ function partialRow(
 	};
 }
 
-/** Rows for every motion; those whose start value the reference never shows are fitted from what it does show. */
+/** Rows for every motion; those whose start or end value the reference never shows are fitted from what it does show. */
 function draftRows(
 	motions: MovingProperty[],
 	track: Track,
@@ -173,10 +183,16 @@ function draftRows(
 		model,
 		bounds,
 	);
+	const ends = fitUnseenEnds(
+		items.filter((i) => i.observed.fromObserved && endUnseen(track, i.m)),
+		cap.frameMs,
+		model,
+		bounds,
+	);
 	const noise = model?.noise ?? 0;
 	const clipped = clippedRanges(cap);
 	return items.map(({ m, observed }) => {
-		const fit = partial.get(m);
+		const fit = partial.get(m) ?? ends.get(m);
 		const row = fit
 			? partialRow(m, observed, fit, noise)
 			: draftRow(m, observed, animations, cap, noise, bounds);

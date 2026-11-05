@@ -69,6 +69,7 @@ It lists the time windows where the screen moves, so you can pick `--start` and 
   A panel that slides over content that stays in place, such as a sidebar revealing its own content, gets an edge too: its edge sweeps across the content while the content holds still.
   A thin divider line between two areas of the same colour counts as an edge.
   An edge is followed from frame to frame, so a neighbouring edge or an icon that changes colour does not take its place; a frame where it does not show near where it should be has no reading.
+  When the lines nearest the element ride on it, such as the rules of a list that scrolls with it, the next kind of edge that moves apart from it is followed instead, such as the panel edge below the list.
   `verify` writes your page's edge readings to `clone-edges.json` next to `verdict.json`.
 - On a recording that switches between a light and a dark theme, text is followed against whatever is behind it, so white text on the dark page counts as visible.
   Its fades there are measured between the two switches, and `verify` measures your page between the same times.
@@ -148,13 +149,17 @@ The report also has these sections:
 - **Not measured**: what motionclone could not check for each element, such as colour or shadow.
 - **Coverage warnings**: places where the reference changes but no row checks it, for example a part of the page you did not track.
   A result like "PASS with 2 coverage warnings" means the measured motion matches, not that everything does.
-- **Partly observed**: rows whose start the reference never shows, for example an element that is invisible while it starts to move.
+- **Partly observed**: rows whose start the reference never shows, for example an element that is invisible while it starts to move, and rows whose end it never shows, for example an element that fades, morphs or leaves its region while it still moves.
   Only the visible part is checked.
+- **Unpaired motions**: motions of your version that no row pairs with, at times the reference does not show the element (lost, faded or cut off).
+  They are listed, not checked.
 - **Advisory**: rows with weak evidence.
   They are shown with their numbers but never fail the result.
 
 An element that moves the same way several times, with pauses of at least 250 ms between, gets one row per motion: `.sheet[0].translateY`, `.sheet[0].translateY#2` and so on.
-Your version must make the same number of motions; row #2 is checked against your second one.
+Each row is paired with the motion of your version most like it in start time, direction and distance, keeping their order, so a motion the reference misses or your version adds does not shift the later pairs.
+A row without a partner fails, with "sheet[0] translateY has 3 motions, want 4" when your version makes fewer.
+An extra motion of yours fails the row nearest it when the reference shows the element holding still there; where the reference does not show the element, it is listed under **Unpaired motions**.
 
 `spec.json` lists motions it left out under `dropped`, each with a reason.
 A fit that starts before the clip, ends after it or runs longer than it is not a row.
@@ -224,7 +229,8 @@ It does not fail the result.
 - A panel edge is found only where it stands out from what is around it: a white sheet on a white page shows no edge, so its rest position there is taken from the nearest frame that shows it, or left out.
 - A panel edge is looked for only around an element that moves at least 8 CSS px; content that stays exactly in place gets no edge, even when a panel reveals it.
 - When an element is invisible at the start of its motion, its start value and exact easing are a best guess; only the visible part is checked.
-- Rows with weak evidence (few clear frames, a loose fit) are advisory and never fail.
+  The same holds for the end value of a motion the recording stops showing while the element still moves, such as a strip that morphs into a pill or slides past its region edge.
+- Rows with weak evidence (few clear frames, a loose fit, a change that happens while the tracker does not see the element) are advisory and never fail.
 - From a video, an opacity row that the pixels contradict drops to medium or low confidence; its notes give both numbers.
 - From a video, a small opacity rise (under 15 %) while the same element ends a slide is motion blur clearing, not a fade.
   It goes to `dropped` with that reason.

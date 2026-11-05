@@ -126,6 +126,7 @@ export function progressRow(
 		from: 0,
 		to: 1,
 		fromObserved: true,
+		toObserved: true,
 		startMs: r1(timing.startMs),
 		durationMs: r1(timing.durationMs),
 		easing: timing.easing,

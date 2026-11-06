@@ -51,6 +51,8 @@ motionclone capture loader.mov --out ref --start 0:03 --end 0:05 --crop 320,180,
 `probe` prints the size, frame rate and length of the recording.
 When a phone or browser screen sits inside a larger frame, it also finds that screen and suggests `--crop` and `--css-scale`, from the width of common phones (390, 393, 402, 430 CSS px and others).
 It lists the time windows where the screen moves, so you can pick `--start` and `--end`.
+Cover the whole animation, from the rest before the first window to the rest after the last, and keep the moving elements whole inside the crop.
+If part of it cannot be tracked, capture it anyway: the verdict lists what was not measured, and the side by side still shows all of it.
 `--screen` prints the screen guess even when it is unsure.
 `--sheet <dir>` writes `contact-sheet.png`, one labelled frame every `--every` ms, cropped to the screen.
 

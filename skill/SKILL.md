@@ -57,7 +57,10 @@ motionclone capture ref.mp4 --out .motionclone/ref --start 1.2 --end 3 --crop 0,
 
 - For a screen recording, run `motionclone probe ref.mp4 --screen --sheet .motionclone/probe` first.
   It prints the device screen, a `--crop` and `--css-scale` to use, and the time windows with motion; the sheet is a labelled frame grid of the screen.
-- Take `--start` and `--end` from the motion windows, and check them on the sheet.
+- Capture the whole animation the user showed, not only the part that is easy to measure.
+  `--start` begins at the rest before the first motion window and `--end` at the rest after the last one; check both on the sheet.
+- Keep every moving element whole inside the crop for the whole clip, as far as the recording shows it.
+  Never pick a narrower window or crop because the tracker loses an element in part of the clip; capture the whole clip, measure what it can, and tell the user which motions are not measured.
 - A crop is trimmed to whole CSS pixels at `--css-scale` (with a warning), so the clone's frames match the reference's size.
 - `--css-scale` is video pixels per CSS pixel (2 for a recording of a 2x screen), so distances come out in CSS px.
 - `--region name=x,y,w,h` boxes one element, in cropped video pixels; a loose box is fine.
@@ -182,6 +185,8 @@ motionclone side-by-side .motionclone/ref .motionclone/clone --out .motionclone/
 - Several clone directories compare several rebuilds. Use `.mp4` for long clips. A gif over 8 MB gets a warning; lower `--width` or `--fps`, or use `--from` and `--to`.
 - `--crop x,y,w,h` (once for all, or once per input) cuts away unrelated page area.
 - `--offset "0,120"` shifts a capture's clock when its motion starts late or early.
+- Show the same span the user showed: the reference and the rebuild cover the whole animation, from rest to rest.
+  Look at a first, middle and last frame of the output; if an element is cut off at an edge or the clip ends mid-motion, capture again with a wider window or crop.
 - Do not hand-roll ffmpeg for this.
 
 ## Notes

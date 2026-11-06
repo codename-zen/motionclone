@@ -129,15 +129,15 @@ Real app recordings, measured from the video and rebuilt with new code.
 | How it was rebuilt | HTML and CSS transitions with ease-out curves of about 180 to 260 ms. The info panel is a reveal: its edge sweeps in while its content stays in place.                               |
 | What was measured  | The editor's edge over four slides, the toolbar and info panel positions, and the look: colours, type sizes and structure.                                                           |
 
-![Vercel conference badge: the reference and a rebuild of the badge dropping in, swinging and being dragged on its lanyard](.github/assets/bench-vercel-badge.gif)
+![Yume journal: the reference and a rebuild of the journal opening, flipping three pages, closing and being dragged](.github/assets/bench-yume.gif)
 
-|                    |                                                                                                                                                                       |
-| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| What it is         | The Vercel conference badge on its lanyard: it drops in, swings, is dragged four times and thrown over the top, and turns to show its back. The whole 16 s recording. |
-| How it was rebuilt | HTML and JavaScript with a small rope simulation, driven by a script on the recording's timeline.                                                                     |
-| What was measured  | The look: background, text colour, accent colours and type sizes. The badge's swing and turn are not measured, because rotation is not tracked yet.                   |
+|                    |                                                                                                                                                                                                                   |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| What it is         | A dark dream journal on a phone screen. The closed book opens into a spread, three pages flip, it closes, then it is dragged twice and springs back. The whole 9 s recording.                                     |
+| How it was rebuilt | One HTML page with a Web Animations timeline on the recording's clock. The book is a CSS 3D object; the pages peel with clip-path and transforms.                                                                 |
+| What was measured  | The look: colours, type sizes, blocks and structure. The open, the flips and the close are rotation, which motionclone does not track yet, and the drags end where they start; these were matched frame by frame. |
 
-Clips of Google Pay, Amie, Typefully and Vercel belong to their owners and are shown only to compare the motion.
+Clips of Google Pay, Amie, Typefully and Yume belong to their owners and are shown only to compare the motion.
 
 ## Limits
 
